@@ -133,15 +133,21 @@ Easy .env file handling:
 ```php
 use ElliePHP\Components\Support\Util\Env;
 
+// Create instance and load .env file
 $env = new Env(__DIR__);
 $env->load();
 
-// Get values with type casting
+// Get values with automatic type casting
 $debug = $env->get('APP_DEBUG', false);  // bool
 $port = $env->get('APP_PORT', 3000);     // int
+$name = $env->get('APP_NAME', 'MyApp'); // string
+
+// Check if variable exists
+$env->has('APP_KEY');                    // true/false
 
 // Require variables
 $env->requireNotEmpty(['APP_KEY', 'DB_HOST']);
+$env->requireOneOf('APP_ENV', ['local', 'production']);
 ```
 
 ### HTTP Request (`Request`)
@@ -176,16 +182,31 @@ PSR-7 compliant response builder:
 
 ```php
 use ElliePHP\Components\Support\Http\Response;
+use Nyholm\Psr7\Factory\Psr17Factory;
 
-// JSON responses
-Response::json(['status' => 'success']);
-Response::json(['error' => 'Not found'], 404);
+$factory = new Psr17Factory();
+$psrResponse = $factory->createResponse(200);
+$response = new Response($psrResponse);
 
-// Other responses
-Response::text('Hello World');
-Response::html('<h1>Hello</h1>');
-Response::redirect('/dashboard');
-Response::download('/path/to/file.pdf');
+// Create responses
+$response->json(['status' => 'success']);
+$response->json(['error' => 'Not found'], 404);
+$response->text('Hello World');
+$response->html('<h1>Hello</h1>');
+$response->redirect('/dashboard');
+
+// Status code helpers
+$response->ok(['data' => 'value']);
+$response->created(['id' => 123]);
+$response->notFound('Resource not found');
+$response->serverError('Something went wrong');
+
+// File downloads
+$response->download($content, 'file.pdf');
+$response->file('/path/to/file.pdf');
+
+// Send response
+$response->send();
 ```
 
 ### Logging (`Log`)
@@ -194,12 +215,24 @@ PSR-3 compliant logging facade:
 
 ```php
 use ElliePHP\Components\Support\Logging\Log;
+use Psr\Log\LoggerInterface;
 
+// Inject your PSR-3 logger
 $logger = new Log($psrLogger);
 
+// Log messages
+$logger->debug('Debug information');
 $logger->info('User logged in', ['user_id' => 123]);
+$logger->warning('Deprecated method used');
 $logger->error('Database error', ['query' => $sql]);
-$logger->exception($exception);
+$logger->critical('System failure');
+
+// Log exceptions with full context
+try {
+    // code...
+} catch (\Exception $e) {
+    $logger->exception($e);
+}
 ```
 
 ## Testing

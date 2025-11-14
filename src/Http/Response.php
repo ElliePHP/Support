@@ -6,8 +6,6 @@ namespace ElliePHP\Components\Support\Http;
 
 use DateTimeInterface;
 use ElliePHP\Components\Support\Util\Json;
-use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Message\ResponseInterface;
 
