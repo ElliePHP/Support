@@ -12,11 +12,7 @@ class Env
     use Types;
 
     private Dotenv $dotenv;
-    private bool $loaded = false {
-        get {
-            return $this->loaded;
-        }
-    }
+    private bool $loaded = false;
 
     /**
      * Create a new Env instance
@@ -27,6 +23,16 @@ class Env
     public function __construct(string $path, string|array $names = '.env')
     {
         $this->dotenv = Dotenv::createImmutable($path, $names);
+    }
+
+    /**
+     * Check if environment variables have been loaded
+     *
+     * @return bool
+     */
+    public function isLoaded(): bool
+    {
+        return $this->loaded;
     }
 
     /**
@@ -66,9 +72,21 @@ class Env
      */
     public function get(string $key, mixed $default = null): mixed
     {
-        $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
+        // Check if variable exists in any source
+        $value = null;
+        if (isset($_ENV[$key])) {
+            $value = $_ENV[$key];
+        } elseif (isset($_SERVER[$key])) {
+            $value = $_SERVER[$key];
+        } else {
+            $envValue = getenv($key);
+            if ($envValue !== false) {
+                $value = $envValue;
+            }
+        }
 
-        if ($value === false) {
+        // Variable not found, return default
+        if ($value === null) {
             return $default;
         }
 

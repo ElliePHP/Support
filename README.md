@@ -177,7 +177,7 @@ $env->requireOneOf('APP_ENV', ['local', 'staging', 'production']);
 $env->loadWithRequired(['APP_KEY', 'DB_HOST', 'DB_NAME']);
 
 // Check if .env was loaded
-if ($env->loaded) {
+if ($env->isLoaded()) {
     // Environment loaded
 }
 ```
