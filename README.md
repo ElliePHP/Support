@@ -178,7 +178,7 @@ $request->hasHeader('Authorization');
 
 ### HTTP Response (`Response`)
 
-PSR-7 compliant response builder:
+PSR-7 compliant response builder with extensive helpers:
 
 ```php
 use ElliePHP\Components\Support\Http\Response;
@@ -188,25 +188,138 @@ $factory = new Psr17Factory();
 $psrResponse = $factory->createResponse(200);
 $response = new Response($psrResponse);
 
-// Create responses
-$response->json(['status' => 'success']);
-$response->json(['error' => 'Not found'], 404);
-$response->text('Hello World');
-$response->html('<h1>Hello</h1>');
-$response->redirect('/dashboard');
+// Basic responses
+$response->make('Hello World');
+$response->make(['data' => 'value'], 200, ['X-Custom' => 'header']);
 
-// Status code helpers
-$response->ok(['data' => 'value']);
-$response->created(['id' => 123]);
-$response->notFound('Resource not found');
-$response->serverError('Something went wrong');
+// Content type responses
+$response->json(['status' => 'success']);
+$response->jsonp('callback', ['data' => 'value']);
+$response->html('<h1>Hello</h1>');
+$response->text('Plain text content');
+$response->xml('<?xml version="1.0"?><root></root>');
+
+// Redirects
+$response->redirect('/dashboard');
+$response->redirectPermanent('/new-url');      // 301
+$response->redirectTemporary('/temp-url');     // 302
+$response->redirectSeeOther('/other');         // 303
+$response->back('/fallback');                  // Previous URL
+
+// Status code helpers (2xx)
+$response->ok(['data' => 'value']);            // 200
+$response->created(['id' => 123]);             // 201
+$response->accepted(['queued' => true]);       // 202
+$response->noContent();                        // 204
+
+// Status code helpers (4xx)
+$response->badRequest('Invalid input');        // 400
+$response->unauthorized('Login required');     // 401
+$response->forbidden('Access denied');         // 403
+$response->notFound('Resource not found');     // 404
+$response->methodNotAllowed(['GET', 'POST']);  // 405
+$response->conflict('Resource exists');        // 409
+$response->unprocessable(['errors' => []]);    // 422
+$response->tooManyRequests(60, 'Rate limit');  // 429
+
+// Status code helpers (5xx)
+$response->serverError('System error');        // 500
+$response->serviceUnavailable(300, 'Down');    // 503
 
 // File downloads
-$response->download($content, 'file.pdf');
-$response->file('/path/to/file.pdf');
+$response->download($content, 'report.pdf');
+$response->file('/path/to/document.pdf', 'custom-name.pdf');
+$response->streamDownload('/path/to/large-file.zip', 'archive.zip');
+$response->streamDownload('/tmp/file.txt', null, [], true); // Delete after
+
+// Headers and cookies
+$response->withHeader('X-Custom', 'value');
+$response->withHeaders(['X-Foo' => 'bar', 'X-Baz' => 'qux']);
+$response->contentType('application/json');
+$response->cacheControl('max-age=3600');
+$response->noCache();
+$response->etag('abc123');
+$response->lastModified(time());
+
+// Cookies
+$response->cookie('session', 'abc123', 60);    // Expires in 60 minutes
+$response->withCookie('token', 'xyz', time() + 3600);
+$response->withoutCookie('old_cookie');        // Delete cookie
+
+// Response inspection
+$response->status();                           // Get status code
+$response->isSuccessful();                     // 2xx
+$response->isOk();                             // 200
+$response->isRedirect();                       // 3xx
+$response->isClientError();                    // 4xx
+$response->isServerError();                    // 5xx
+$response->isForbidden();                      // 403
+$response->isNotFound();                       // 404
+
+// Body and headers
+$response->body();                             // Get body as string
+$response->content();                          // Alias for body()
+$response->toJson();                           // Encode body as JSON
+$response->headers();                          // Get all headers
+$response->getHeader('Content-Type');          // Get specific header
+$response->hasHeader('Authorization');         // Check header exists
+
+// PSR-7 access
+$psrResponse = $response->psr();               // Get PSR-7 response
+$psrResponse = $response->raw();               // Alias for psr()
 
 // Send response
-$response->send();
+$response->send();                             // Send to client
+$response->sendAndExit();                      // Send and exit script
+
+// Method chaining - Build complex responses fluently
+$response->json(['user' => 'John'])
+    ->withHeader('X-API-Version', '1.0')
+    ->withHeader('X-Request-ID', 'abc123')
+    ->cookie('session', 'token', 120)
+    ->send();
+
+// Chain status, headers, and body modifications
+$response->make(['data' => 'value'])
+    ->withStatus(201)
+    ->withHeaders([
+        'X-Custom' => 'header',
+        'X-Rate-Limit' => '100'
+    ])
+    ->contentType('application/json')
+    ->cacheControl('no-cache')
+    ->send();
+
+// Build API response with multiple cookies and headers
+$response->ok(['success' => true])
+    ->withCookie('auth', 'token123', time() + 3600)
+    ->withCookie('refresh', 'refresh456', time() + 86400)
+    ->withHeader('X-Total-Count', '150')
+    ->etag('v1.2.3')
+    ->lastModified(time())
+    ->send();
+
+// Create cacheable response
+$response->json(['data' => 'cached'])
+    ->cacheControl('public, max-age=3600')
+    ->etag(md5('cached-data'))
+    ->lastModified(strtotime('-1 hour'))
+    ->send();
+
+// Redirect with cookie
+$response->redirect('/dashboard')
+    ->cookie('last_page', '/profile', 30)
+    ->withHeader('X-Redirect-Reason', 'authentication')
+    ->send();
+
+// No-cache JSON response with custom headers
+$response->json(['realtime' => 'data'])
+    ->noCache()
+    ->withHeaders([
+        'X-Stream-ID' => 'live-123',
+        'X-Update-Frequency' => '5s'
+    ])
+    ->send();
 ```
 
 ### Logging (`Log`)
