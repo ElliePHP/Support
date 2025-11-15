@@ -26,13 +26,13 @@ final class Response
      * @param int $status HTTP status code.
      * @param array $headers Headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function make(
         mixed $content = '',
         int $status = 200,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         // Auto-detect content type
         if (is_array($content) || is_object($content)) {
@@ -50,7 +50,7 @@ final class Response
             $response = $response->withBody($stream);
         }
 
-        return new self($response);
+        return $response;
     }
 
     /**
@@ -61,14 +61,14 @@ final class Response
      * @param array $headers Additional headers.
      * @param int $flags JSON encoding flags.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function json(
         mixed $data,
         int $status = 200,
         array $headers = [],
         int $flags = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
-    ): self
+    ): ResponseInterface
     {
         $json = json_encode($data, $flags);
 
@@ -79,9 +79,7 @@ final class Response
         }
 
         $stream = $this->factory->createStream($json);
-        $response = $response->withBody($stream);
-
-        return new self($response);
+        return $response->withBody($stream);
     }
 
     /**
@@ -92,14 +90,14 @@ final class Response
      * @param int $status HTTP status code.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function jsonp(
         string $callback,
         mixed $data,
         int $status = 200,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $json = Json::encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
         $content = sprintf('/**/ typeof %s === \'function\' && %s(%s);', $callback, $callback, $json);
@@ -111,9 +109,7 @@ final class Response
         }
 
         $stream = $this->factory->createStream($content);
-        $response = $response->withBody($stream);
-
-        return new self($response);
+        return $response->withBody($stream);
     }
 
     /**
@@ -123,13 +119,13 @@ final class Response
      * @param int $status HTTP status code.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function html(
         string $html,
         int $status = 200,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
@@ -138,9 +134,7 @@ final class Response
         }
 
         $stream = $this->factory->createStream($html);
-        $response = $response->withBody($stream);
-
-        return new self($response);
+        return $response->withBody($stream);
     }
 
     /**
@@ -150,13 +144,13 @@ final class Response
      * @param int $status HTTP status code.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function text(
         string $text,
         int $status = 200,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
@@ -165,9 +159,7 @@ final class Response
         }
 
         $stream = $this->factory->createStream($text);
-        $response = $response->withBody($stream);
-
-        return new self($response);
+        return $response->withBody($stream);
     }
 
     /**
@@ -177,13 +169,13 @@ final class Response
      * @param int $status HTTP status code.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function xml(
         string $xml,
         int $status = 200,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
@@ -194,7 +186,7 @@ final class Response
         $stream = $this->factory->createStream($xml);
         $response = $response->withBody($stream);
 
-        return new self($response);
+        return $response;
     }
 
     /**
@@ -204,13 +196,13 @@ final class Response
      * @param int $status HTTP status code (301, 302, 303, 307, 308).
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function redirect(
         string $url,
         int $status = 302,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
@@ -218,7 +210,7 @@ final class Response
             $response = $response->withHeader($name, $value);
         }
 
-        return new self($response);
+        return $response;
     }
 
     /**
@@ -227,9 +219,9 @@ final class Response
      * @param string $url Redirect URL.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function redirectPermanent(string $url, array $headers = []): self
+    public function redirectPermanent(string $url, array $headers = []): ResponseInterface
     {
         return $this->redirect($url, 301, $headers);
     }
@@ -240,9 +232,9 @@ final class Response
      * @param string $url Redirect URL.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function redirectTemporary(string $url, array $headers = []): self
+    public function redirectTemporary(string $url, array $headers = []): ResponseInterface
     {
         return $this->redirect($url, 302, $headers);
     }
@@ -253,9 +245,9 @@ final class Response
      * @param string $url Redirect URL.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function redirectSeeOther(string $url, array $headers = []): self
+    public function redirectSeeOther(string $url, array $headers = []): ResponseInterface
     {
         return $this->redirect($url, 303, $headers);
     }
@@ -266,9 +258,9 @@ final class Response
      * @param string|null $fallback Fallback URL.
      * @param int $status Status code.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function back(?string $fallback = '/', int $status = 302): self
+    public function back(?string $fallback = '/', int $status = 302): ResponseInterface
     {
         $referer = $_SERVER['HTTP_REFERER'] ?? $fallback;
         return $this->redirect($referer, $status);
@@ -279,12 +271,11 @@ final class Response
      *
      * @param int $status HTTP status code.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function noContent(int $status = 204): self
+    public function noContent(int $status = 204): ResponseInterface
     {
-        $response = $this->factory->createResponse($status);
-        return new self($response);
+        return $this->factory->createResponse($status);
     }
 
     /**
@@ -292,9 +283,9 @@ final class Response
      *
      * @param int $status HTTP status code.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function empty(int $status = 204): self
+    public function empty(int $status = 204): ResponseInterface
     {
         return $this->noContent($status);
     }
@@ -306,13 +297,13 @@ final class Response
      * @param string $filename Download filename.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function download(
         string $content,
         string $filename,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         $response = $this->factory->createResponse(200);
 
@@ -325,9 +316,7 @@ final class Response
         }
 
         $stream = $this->factory->createStream($content);
-        $response = $response->withBody($stream);
-
-        return new self($response);
+        return $response->withBody($stream);
     }
 
     /**
@@ -337,13 +326,13 @@ final class Response
      * @param string|null $filename Download filename.
      * @param array $headers Additional headers.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function file(
         string $path,
         ?string $filename = null,
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         if (!file_exists($path)) {
             return $this->notFound('File not found');
@@ -363,14 +352,14 @@ final class Response
      * @param array $headers Additional headers.
      * @param bool $deleteAfter Delete file after download.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function streamDownload(
         string $path,
         ?string $filename = null,
         array $headers = [],
         bool $deleteAfter = false
-    ): self
+    ): ResponseInterface
     {
         if (!file_exists($path)) {
             return $this->notFound('File not found');
@@ -398,7 +387,7 @@ final class Response
             });
         }
 
-        return new self($response);
+        return $response;
     }
 
     /**
@@ -407,9 +396,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function ok(mixed $content = '', array $headers = []): self
+    public function ok(mixed $content = '', array $headers = []): ResponseInterface
     {
         return $this->make($content, 200, $headers);
     }
@@ -420,9 +409,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function created(mixed $content = '', array $headers = []): self
+    public function created(mixed $content = '', array $headers = []): ResponseInterface
     {
         return $this->make($content, 201, $headers);
     }
@@ -433,9 +422,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function accepted(mixed $content = '', array $headers = []): self
+    public function accepted(mixed $content = '', array $headers = []): ResponseInterface
     {
         return $this->make($content, 202, $headers);
     }
@@ -446,9 +435,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function badRequest(mixed $content = 'Bad Request', array $headers = []): self
+    public function badRequest(mixed $content = 'Bad Request', array $headers = []): ResponseInterface
     {
         return $this->make($content, 400, $headers);
     }
@@ -459,9 +448,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function unauthorized(mixed $content = 'Unauthorized', array $headers = []): self
+    public function unauthorized(mixed $content = 'Unauthorized', array $headers = []): ResponseInterface
     {
         return $this->make($content, 401, $headers);
     }
@@ -472,9 +461,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function forbidden(mixed $content = 'Forbidden', array $headers = []): self
+    public function forbidden(mixed $content = 'Forbidden', array $headers = []): ResponseInterface
     {
         return $this->make($content, 403, $headers);
     }
@@ -485,9 +474,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function notFound(mixed $content = 'Not Found', array $headers = []): self
+    public function notFound(mixed $content = 'Not Found', array $headers = []): ResponseInterface
     {
         return $this->make($content, 404, $headers);
     }
@@ -499,13 +488,13 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function methodNotAllowed(
         array $allowed = [],
         mixed $content = 'Method Not Allowed',
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         if (!empty($allowed)) {
             $headers['Allow'] = implode(', ', $allowed);
@@ -520,9 +509,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function conflict(mixed $content = 'Conflict', array $headers = []): self
+    public function conflict(mixed $content = 'Conflict', array $headers = []): ResponseInterface
     {
         return $this->make($content, 409, $headers);
     }
@@ -533,9 +522,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function unprocessable(mixed $content = 'Unprocessable Entity', array $headers = []): self
+    public function unprocessable(mixed $content = 'Unprocessable Entity', array $headers = []): ResponseInterface
     {
         return $this->make($content, 422, $headers);
     }
@@ -547,13 +536,13 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function tooManyRequests(
         ?int $retryAfter = null,
         mixed $content = 'Too Many Requests',
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         if ($retryAfter !== null) {
             $headers['Retry-After'] = $retryAfter;
@@ -568,9 +557,9 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function serverError(mixed $content = 'Internal Server Error', array $headers = []): self
+    public function serverError(mixed $content = 'Internal Server Error', array $headers = []): ResponseInterface
     {
         return $this->make($content, 500, $headers);
     }
@@ -582,13 +571,13 @@ final class Response
      * @param mixed $content
      * @param array $headers
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function serviceUnavailable(
         ?int $retryAfter = null,
         mixed $content = 'Service Unavailable',
         array $headers = []
-    ): self
+    ): ResponseInterface
     {
         if ($retryAfter !== null) {
             $headers['Retry-After'] = $retryAfter;
@@ -789,11 +778,11 @@ final class Response
      * @param string $name Header name.
      * @param string|array $value Header value.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function withHeader(string $name, string|array $value): self
+    public function withHeader(string $name, string|array $value): ResponseInterface
     {
-        return new self($this->response->withHeader($name, $value));
+        return $this->response->withHeader($name, $value);
     }
 
     /**
@@ -802,9 +791,9 @@ final class Response
      * @param string $name
      * @param string|array $value
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function header(string $name, string|array $value): self
+    public function header(string $name, string|array $value): ResponseInterface
     {
         return $this->withHeader($name, $value);
     }
@@ -814,15 +803,15 @@ final class Response
      *
      * @param array $headers Headers array.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function withHeaders(array $headers): self
+    public function withHeaders(array $headers): ResponseInterface
     {
         $response = $this->response;
         foreach ($headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
-        return new self($response);
+        return $response;
     }
 
     /**
@@ -831,11 +820,11 @@ final class Response
      * @param int $status Status code.
      * @param string $reason Reason phrase.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function withStatus(int $status, string $reason = ''): self
+    public function withStatus(int $status, string $reason = ''): ResponseInterface
     {
-        return new self($this->response->withStatus($status, $reason));
+        return $this->response->withStatus($status, $reason);
     }
 
     /**
@@ -844,9 +833,9 @@ final class Response
      * @param int $status
      * @param string $reason
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function setStatusCode(int $status, string $reason = ''): self
+    public function setStatusCode(int $status, string $reason = ''): ResponseInterface
     {
         return $this->withStatus($status, $reason);
     }
@@ -856,12 +845,12 @@ final class Response
      *
      * @param string $body Body content.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function withBody(string $body): self
+    public function withBody(string $body): ResponseInterface
     {
         $stream = $this->factory->createStream($body);
-        return new self($this->response->withBody($stream));
+        return $this->response->withBody($stream);
     }
 
     /**
@@ -869,9 +858,9 @@ final class Response
      *
      * @param string $content
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function setContent(string $content): self
+    public function setContent(string $content): ResponseInterface
     {
         return $this->withBody($content);
     }
@@ -888,7 +877,7 @@ final class Response
      * @param bool $httpOnly HTTP only flag.
      * @param string $sameSite SameSite attribute.
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function withCookie(
         string $name,
@@ -899,7 +888,7 @@ final class Response
         bool $secure = false,
         bool $httpOnly = true,
         string $sameSite = 'Lax'
-    ): self
+    ): ResponseInterface
     {
         $cookie = urlencode($name) . '=' . urlencode($value);
 
@@ -928,7 +917,7 @@ final class Response
             $cookie .= '; SameSite=' . $sameSite;
         }
 
-        return new self($this->response->withAddedHeader('Set-Cookie', $cookie));
+        return $this->response->withAddedHeader('Set-Cookie', $cookie);
     }
 
     /**
@@ -943,7 +932,7 @@ final class Response
      * @param bool $httpOnly
      * @param string $sameSite
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function cookie(
         string $name,
@@ -954,7 +943,7 @@ final class Response
         bool $secure = false,
         bool $httpOnly = true,
         string $sameSite = 'Lax'
-    ): self
+    ): ResponseInterface
     {
         $expires = $minutes > 0 ? time() + ($minutes * 60) : 0;
         return $this->withCookie($name, $value, $expires, $path, $domain, $secure, $httpOnly, $sameSite);
@@ -970,7 +959,7 @@ final class Response
      * @param bool $httpOnly
      * @param string $sameSite
      *
-     * @return self
+     * @return ResponseInterface
      */
     public function withoutCookie(
         string $name,
@@ -979,7 +968,7 @@ final class Response
         bool $secure = false,
         bool $httpOnly = true,
         string $sameSite = 'Lax'
-    ): self
+    ): ResponseInterface
     {
         return $this->withCookie($name, '', time() - 3600, $path, $domain, $secure, $httpOnly, $sameSite);
     }
@@ -989,9 +978,9 @@ final class Response
      *
      * @param string $contentType
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function contentType(string $contentType): self
+    public function contentType(string $contentType): ResponseInterface
     {
         return $this->withHeader('Content-Type', $contentType);
     }
@@ -1001,9 +990,9 @@ final class Response
      *
      * @param string $value
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function cacheControl(string $value): self
+    public function cacheControl(string $value): ResponseInterface
     {
         return $this->withHeader('Cache-Control', $value);
     }
@@ -1011,9 +1000,9 @@ final class Response
     /**
      * Set response to not be cached.
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function noCache(): self
+    public function noCache(): ResponseInterface
     {
         return $this->withHeaders([
             'Cache-Control' => 'no-cache, no-store, must-revalidate',
@@ -1027,9 +1016,9 @@ final class Response
      *
      * @param string $etag
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function etag(string $etag): self
+    public function etag(string $etag): ResponseInterface
     {
         return $this->withHeader('ETag', $etag);
     }
@@ -1039,9 +1028,9 @@ final class Response
      *
      * @param int|DateTimeInterface $time
      *
-     * @return self
+     * @return ResponseInterface
      */
-    public function lastModified(int|DateTimeInterface $time): self
+    public function lastModified(int|DateTimeInterface $time): ResponseInterface
     {
         if ($time instanceof DateTimeInterface) {
             $time = $time->getTimestamp();
