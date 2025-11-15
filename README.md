@@ -128,7 +128,7 @@ Json::validate($json, $schema);
 
 ### Environment Management (`Env`)
 
-Easy .env file handling:
+Easy .env file handling with automatic type casting:
 
 ```php
 use ElliePHP\Components\Support\Util\Env;
@@ -137,17 +137,49 @@ use ElliePHP\Components\Support\Util\Env;
 $env = new Env(__DIR__);
 $env->load();
 
-// Get values with automatic type casting
-$debug = $env->get('APP_DEBUG', false);  // bool
-$port = $env->get('APP_PORT', 3000);     // int
-$name = $env->get('APP_NAME', 'MyApp'); // string
+// Automatic type casting based on default value type
+$debug = $env->get('APP_DEBUG', false);      // Casts to bool
+$port = $env->get('APP_PORT', 3000);         // Casts to int
+$timeout = $env->get('TIMEOUT', 30.5);       // Casts to float
+$name = $env->get('APP_NAME', 'MyApp');      // Casts to string
+$features = $env->get('FEATURES', []);       // Casts to array (comma-separated)
+
+// Smart casting when no default provided
+// Automatically detects: booleans, integers, floats, and strings
+$value = $env->get('SMART_VALUE');           // Auto-detects type
+// 'true' / 'false' / 'yes' / 'no' / 'on' / 'off' → bool
+// '123' → int
+// '123.45' → float
+// 'text' → string
+
+// Special .env values
+// APP_DEBUG=true          → boolean true
+// APP_DEBUG=(true)        → boolean true
+// APP_PORT=3000           → integer 3000
+// APP_TIMEOUT=30.5        → float 30.5
+// APP_VALUE=null          → null
+// APP_VALUE=(null)        → null
+// APP_EMPTY=empty         → empty string
+// APP_EMPTY=(empty)       → empty string
 
 // Check if variable exists
-$env->has('APP_KEY');                    // true/false
+$env->has('APP_KEY');                        // true/false
+
+// Get all environment variables
+$all = $env->all();
 
 // Require variables
+$env->require(['APP_KEY', 'DB_HOST']);
 $env->requireNotEmpty(['APP_KEY', 'DB_HOST']);
-$env->requireOneOf('APP_ENV', ['local', 'production']);
+$env->requireOneOf('APP_ENV', ['local', 'staging', 'production']);
+
+// Load with required variables in one call
+$env->loadWithRequired(['APP_KEY', 'DB_HOST', 'DB_NAME']);
+
+// Check if .env was loaded
+if ($env->loaded) {
+    // Environment loaded
+}
 ```
 
 ### HTTP Request (`Request`)
@@ -272,54 +304,46 @@ $psrResponse = $response->raw();               // Alias for psr()
 $response->send();                             // Send to client
 $response->sendAndExit();                      // Send and exit script
 
-// Method chaining - Build complex responses fluently
-$response->json(['user' => 'John'])
-    ->withHeader('X-API-Version', '1.0')
-    ->withHeader('X-Request-ID', 'abc123')
-    ->cookie('session', 'token', 120)
-    ->send();
+// Building responses - Two approaches:
 
-// Chain status, headers, and body modifications
-$response->make(['data' => 'value'])
+// 1. Include headers directly in response creation (recommended)
+$psrResponse = $response->json(
+    ['user' => 'John'],
+    200,
+    ['X-API-Version' => '1.0', 'X-Request-ID' => 'abc123']
+);
+
+$psrResponse = $response->ok(
+    ['success' => true],
+    ['X-Total-Count' => '150', 'Cache-Control' => 'public, max-age=3600']
+);
+
+$psrResponse = $response->redirect(
+    '/dashboard',
+    302,
+    ['X-Redirect-Reason' => 'authentication']
+);
+
+// 2. Use PSR-7 method chaining for complex modifications
+// Response creation methods return PSR-7 ResponseInterface which supports chaining
+$psrResponse = $response->json(['data' => 'value'])
     ->withStatus(201)
-    ->withHeaders([
-        'X-Custom' => 'header',
-        'X-Rate-Limit' => '100'
-    ])
-    ->contentType('application/json')
-    ->cacheControl('no-cache')
-    ->send();
+    ->withHeader('X-Custom', 'header')
+    ->withHeader('X-Rate-Limit', '100')
+    ->withAddedHeader('Set-Cookie', 'session=abc123; Path=/');
 
-// Build API response with multiple cookies and headers
-$response->ok(['success' => true])
-    ->withCookie('auth', 'token123', time() + 3600)
-    ->withCookie('refresh', 'refresh456', time() + 86400)
-    ->withHeader('X-Total-Count', '150')
-    ->etag('v1.2.3')
-    ->lastModified(time())
-    ->send();
+// Chain multiple PSR-7 methods
+$psrResponse = $response->html('<h1>Hello</h1>')
+    ->withHeader('Content-Security-Policy', "default-src 'self'")
+    ->withHeader('X-Frame-Options', 'DENY')
+    ->withHeader('X-Content-Type-Options', 'nosniff');
 
-// Create cacheable response
-$response->json(['data' => 'cached'])
-    ->cacheControl('public, max-age=3600')
-    ->etag(md5('cached-data'))
-    ->lastModified(strtotime('-1 hour'))
-    ->send();
+// Wrap PSR-7 response to use Response helper methods
+$wrappedResponse = new Response($psrResponse);
+$wrappedResponse->send();
 
-// Redirect with cookie
-$response->redirect('/dashboard')
-    ->cookie('last_page', '/profile', 30)
-    ->withHeader('X-Redirect-Reason', 'authentication')
-    ->send();
-
-// No-cache JSON response with custom headers
-$response->json(['realtime' => 'data'])
-    ->noCache()
-    ->withHeaders([
-        'X-Stream-ID' => 'live-123',
-        'X-Update-Frequency' => '5s'
-    ])
-    ->send();
+// Or send PSR-7 response directly
+(new Response($psrResponse))->send();
 ```
 
 ### Logging (`Log`)

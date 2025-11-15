@@ -74,7 +74,13 @@ class Env
 
         $parsed = $this->parseValue($value);
 
-        return $this->autoCast($parsed, $default);
+        // If default is provided, cast to its type
+        if ($default !== null) {
+            return $this->autoCast($parsed, $default);
+        }
+
+        // No default provided - try to intelligently cast the value
+        return $this->smartCast($parsed);
     }
 
     /**
@@ -124,6 +130,45 @@ class Env
             'empty', '(empty)' => '',
             default => $value,
         };
+    }
+
+    /**
+     * Intelligently cast a value based on its content
+     *
+     * @param mixed $value
+     * @return mixed
+     */
+    private function smartCast(mixed $value): mixed
+    {
+        // Already a non-string type
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        // Empty string
+        if ($value === '') {
+            return $value;
+        }
+
+        $lower = strtolower($value);
+
+        // Boolean values
+        if (in_array($lower, ['true', 'false', 'yes', 'no', 'on', 'off', '1', '0'], true)) {
+            return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $value;
+        }
+
+        // Numeric values
+        if (is_numeric($value)) {
+            // Check if it's a float
+            if (str_contains($value, '.') || str_contains($lower, 'e')) {
+                return (float) $value;
+            }
+            // Integer
+            return (int) $value;
+        }
+
+        // Return as string
+        return $value;
     }
 
     /**
