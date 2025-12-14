@@ -1171,6 +1171,102 @@ final class Request
     }
 
     /**
+     * Get client IP from Cloudflare headers.
+     * Use this when your application is behind Cloudflare.
+     *
+     * @return string|null
+     */
+    public function ipFromCloudflare(): ?string
+    {
+        $server = $this->request->getServerParams();
+
+        // CF-Connecting-IP is the most reliable for Cloudflare
+        if (isset($server['HTTP_CF_CONNECTING_IP'])) {
+            $ip = trim($server['HTTP_CF_CONNECTING_IP']);
+
+            if ($this->isValidIp($ip)) {
+                return $ip;
+            }
+        }
+
+        // Fallback to standard methods
+        return $this->ip();
+    }
+
+    /**
+     * Check if request is from Cloudflare.
+     * Validates by checking if REMOTE_ADDR is in Cloudflare's IP ranges.
+     *
+     * @return bool
+     */
+    public function isFromCloudflare(): bool
+    {
+        $server = $this->request->getServerParams();
+
+        // Check for CF headers
+        if (!isset($server['HTTP_CF_RAY']) && !isset($server['HTTP_CF_CONNECTING_IP'])) {
+            return false;
+        }
+
+        // Cloudflare IP ranges (IPv4 - subset for validation)
+        // Full list at: https://www.cloudflare.com/ips-v4
+        $cloudflareRanges = [
+            '173.245.48.0/20',
+            '103.21.244.0/22',
+            '103.22.200.0/22',
+            '103.31.4.0/22',
+            '141.101.64.0/18',
+            '108.162.192.0/18',
+            '190.93.240.0/20',
+            '188.114.96.0/20',
+            '197.234.240.0/22',
+            '198.41.128.0/17',
+            '162.158.0.0/15',
+            '104.16.0.0/13',
+            '104.24.0.0/14',
+            '172.64.0.0/13',
+            '131.0.72.0/22',
+        ];
+
+        $remoteAddr = $server['REMOTE_ADDR'] ?? null;
+
+        if (!$remoteAddr) {
+            return false;
+        }
+
+        return $this->isFrom($cloudflareRanges);
+    }
+
+    /**
+     * Get Cloudflare Ray ID for debugging.
+     *
+     * @return string|null
+     */
+    public function cloudflareRayId(): ?string
+    {
+        $rayId = $this->header('CF-Ray');
+        return is_string($rayId) ? $rayId : null;
+    }
+
+    /**
+     * Get Cloudflare visitor info.
+     * Returns information about the visitor's connection through Cloudflare.
+     *
+     * @return array{ip: string|null, country: string|null, ray_id: string|null, is_cloudflare: bool}
+     */
+    public function cloudflareInfo(): array
+    {
+        $server = $this->request->getServerParams();
+
+        return [
+            'ip' => $this->ipFromCloudflare(),
+            'country' => $server['HTTP_CF_IPCOUNTRY'] ?? null,
+            'ray_id' => $this->cloudflareRayId(),
+            'is_cloudflare' => $this->isFromCloudflare(),
+        ];
+    }
+
+    /**
      * Get user agent.
      *
      * @return string|null
