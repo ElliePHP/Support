@@ -1,629 +1,439 @@
 <?php
 
+declare(strict_types=1);
+
 namespace ElliePHP\Components\Support\Util;
+
+use Stringable;
 
 final class Str
 {
-    public static function startsWith(string $haystack, string $needle): bool
+    /**
+     * Normalize any incoming value into a valid UTF-8 string.
+     * Accepts: string, Stringable, null, mixed.
+     *
+     * Ensures no TypeErrors occur anywhere in the class.
+     */
+    private static function normalizeString(mixed $value): string
     {
-        return str_starts_with($haystack, $needle);
+        if ($value instanceof Stringable) {
+            return (string) $value;
+        }
+
+        if ($value === null) {
+            return '';
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        return '';
     }
 
-    public static function startsWithAny(string $haystack, array $needles): bool
+    /** Convenience alias */
+    private static function toStr(mixed $value): string
     {
-        return array_any($needles, static fn($needle): bool => self::startsWith($haystack, $needle));
+        return self::normalizeString($value);
     }
 
-    public static function containsAny(string $haystack, array $needles): bool
+    public static function startsWith(mixed $haystack, mixed $needle): bool
     {
-        return array_any($needles, static fn($needle): bool => self::contains($haystack, $needle));
+        return str_starts_with(self::toStr($haystack), self::toStr($needle));
     }
 
-    public static function endsWithAny(string $haystack, array $needles): bool
+    public static function startsWithAny(mixed $haystack, array $needles): bool
     {
-        return array_any($needles, static fn($needle): bool => self::endsWith($haystack, $needle));
+        $haystack = self::toStr($haystack);
+        return array_any($needles, static fn($needle) => self::startsWith($haystack, $needle));
     }
 
-    public static function endsWith(string $haystack, string $needle): bool
+    public static function containsAny(mixed $haystack, array $needles): bool
     {
-        return $needle === "" || str_ends_with($haystack, $needle);
+        $haystack = self::toStr($haystack);
+        return array_any($needles, static fn($needle) => self::contains($haystack, $needle));
     }
 
-    public static function contains(string $haystack, string $needle): bool
+    public static function endsWithAny(mixed $haystack, array $needles): bool
     {
-        return str_contains($haystack, $needle);
+        $haystack = self::toStr($haystack);
+        return array_any($needles, static fn($needle) => self::endsWith($haystack, $needle));
     }
 
-    public static function containsAll(string $haystack, array $needles): bool
+    public static function endsWith(mixed $haystack, mixed $needle): bool
     {
-        return array_all($needles, static fn($needle): bool => self::contains($haystack, $needle));
+        $haystack = self::toStr($haystack);
+        $needle = self::toStr($needle);
+        return $needle === '' || str_ends_with($haystack, $needle);
     }
 
-    public static function toCamelCase(string $string): string
+    public static function contains(mixed $haystack, mixed $needle): bool
     {
-        return lcfirst(
-            str_replace(
-                " ",
-                "",
-                ucwords(str_replace(["-", "_"], " ", $string)),
-            ),
-        );
+        return str_contains(self::toStr($haystack), self::toStr($needle));
     }
 
-    public static function toPascalCase(string $string): string
+    public static function containsAll(mixed $haystack, array $needles): bool
+    {
+        $haystack = self::toStr($haystack);
+        return array_all($needles, fn($needle) => self::contains($haystack, $needle));
+    }
+
+    public static function toCamelCase(mixed $string): string
+    {
+        $string = self::toStr($string);
+        return lcfirst(str_replace(' ', '', ucwords(str_replace(['-', '_'], ' ', $string))));
+    }
+
+    public static function toPascalCase(mixed $string): string
     {
         return ucfirst(self::toCamelCase($string));
     }
 
-    public static function toSnakeCase(string $string): string
+    public static function toSnakeCase(mixed $string): string
     {
-        return strtolower(
-            preg_replace(
-                "/([a-z])([A-Z])/",
-                '$1_$2',
-                str_replace(" ", "_", $string),
-            ),
-        );
+        $string = self::toStr($string);
+        return strtolower(preg_replace("/([a-z])([A-Z])/", '$1_$2', str_replace(' ', '_', $string)));
     }
 
-    public static function toKebabCase(string $string): string
+    public static function toKebabCase(mixed $string): string
     {
-        return strtolower(
-            preg_replace(
-                "/([a-z])([A-Z])/",
-                '$1-$2',
-                str_replace(" ", "-", $string),
-            ),
-        );
+        $string = self::toStr($string);
+        return strtolower(preg_replace("/([a-z])([A-Z])/", '$1-$2', str_replace(' ', '-', $string)));
     }
 
-    /**
-     * Limits the length of a string to the specified number of characters.
-     *
-     * If the string exceeds the specified limit, it is truncated and the specified
-     * ending string is appended to the result.
-     *
-     * @param string $string The input string to limit.
-     * @param int $limit The maximum length of the string. Default is 100.
-     * @param string $end The string to append if the input string is truncated. Default is "...".
-     *
-     * @return string The limited string with the specified ending if truncated.
-     */
-    public static function limit(
-        string $string,
-        int    $limit = 100,
-        string $end = "...",
-    ): string
+    public static function limit(mixed $string, int $limit = 100, string $end = '...'): string
     {
-        return strlen($string) <= $limit
-            ? $string
-            : substr($string, 0, $limit) . $end;
+        $string = self::toStr($string);
+        return strlen($string) <= $limit ? $string : substr($string, 0, $limit) . $end;
     }
 
-    public static function truncateWords(
-        string $string,
-        int    $words = 10,
-        string $end = "...",
-    ): string
+    public static function truncateWords(mixed $string, int $words = 10, string $end = '...'): string
     {
-        $parts = preg_split("/\s+/", $string);
-        return count($parts) <= $words
-            ? $string
-            : implode(" ", array_slice($parts, 0, $words)) . $end;
+        $string = self::toStr($string);
+        $parts = preg_split("/\s+/", $string) ?: [];
+        return count($parts) <= $words ? $string : implode(' ', array_slice($parts, 0, $words)) . $end;
     }
 
-    public static function words(string $string, int $words = 10): string
+    public static function words(mixed $string, int $words = 10): string
     {
-        $parts = preg_split("/\s+/", trim($string));
-        return implode(" ", array_slice($parts, 0, $words));
+        $string = trim(self::toStr($string));
+        $parts = preg_split("/\s+/", $string) ?: [];
+        return implode(' ', array_slice($parts, 0, $words));
     }
 
-    public static function wordCount(string $string): int
+    public static function wordCount(mixed $string): int
     {
-        return count(preg_split("/\s+/", trim($string), -1, PREG_SPLIT_NO_EMPTY));
+        $string = trim(self::toStr($string));
+        return count(preg_split("/\s+/", $string, -1, PREG_SPLIT_NO_EMPTY) ?: []);
     }
 
-    public static function clean(string $string): string
+    public static function clean(mixed $string): string
     {
-        $result = preg_replace("/[^\\p{L}\\p{N}\\s]/u", "", $string);
-        return $result === null ? "" : trim($result);
+        $string = self::toStr($string);
+        $result = preg_replace("/[^\p{L}\p{N}\s]/u", "", $string);
+        return $result === null ? '' : trim($result);
     }
 
-    public static function replace(
-        string $search,
-        string $replace,
-        string $subject,
-    ): string
+    public static function replace(mixed $search, mixed $replace, mixed $subject): string
     {
-        return str_replace($search, $replace, $subject);
+        return str_replace(self::toStr($search), self::toStr($replace), self::toStr($subject));
     }
 
-    public static function replaceFirst(
-        string $search,
-        string $replace,
-        string $subject,
-    ): string
+    public static function replaceFirst(mixed $search, mixed $replace, mixed $subject): string
     {
+        $search = self::toStr($search);
+        $replace = self::toStr($replace);
+        $subject = self::toStr($subject);
+
         $pos = strpos($subject, $search);
         if ($pos === false) {
             return $subject;
         }
+
         return substr_replace($subject, $replace, $pos, strlen($search));
     }
 
-    public static function replaceLast(
-        string $search,
-        string $replace,
-        string $subject,
-    ): string
+    public static function replaceLast(mixed $search, mixed $replace, mixed $subject): string
     {
+        $search = self::toStr($search);
+        $replace = self::toStr($replace);
+        $subject = self::toStr($subject);
+
         $pos = strrpos($subject, $search);
         if ($pos === false) {
             return $subject;
         }
+
         return substr_replace($subject, $replace, $pos, strlen($search));
     }
 
-    public static function replaceArray(
-        array  $search,
-        array  $replace,
-        string $subject,
-    ): string
+    public static function replaceArray(array $search, array $replace, mixed $subject): string
     {
+        $subject = self::toStr($subject);
         return str_replace($search, $replace, $subject);
     }
 
-    public static function toUpperCase(string $string): string
+    public static function toUpperCase(mixed $string): string
     {
-        return strtoupper($string);
+        return strtoupper(self::toStr($string));
     }
 
-    public static function toLowerCase(
-        ?string $string,
-        ?string $encoding = "UTF-8",
-    ): string
+    public static function toLowerCase(mixed $string, ?string $encoding = 'UTF-8'): string
     {
-        return mb_strtolower((string)$string, $encoding);
+        return mb_strtolower(self::toStr($string), $encoding ?? 'UTF-8');
     }
 
-    public static function title(string $string): string
+    public static function title(mixed $string): string
     {
         return ucwords(self::toLowerCase($string));
     }
 
-    public static function ucfirst(string $string): string
+    public static function ucfirst(mixed $string): string
     {
-        return ucfirst($string);
+        return ucfirst(self::toStr($string));
     }
 
-    public static function lcfirst(string $string): string
+    public static function lcfirst(mixed $string): string
     {
-        return lcfirst($string);
+        return lcfirst(self::toStr($string));
     }
 
-    public static function reverse(string $string): string
+    public static function reverse(mixed $string): string
     {
-        return strrev($string);
+        return strrev(self::toStr($string));
     }
 
-    public static function slug(string $string, string $separator = "-"): string
+    public static function slug(mixed $string, string $separator = '-'): string
     {
-        $string = strtolower(
-            trim(
-                (string)preg_replace("/[^A-Za-z0-9-]+/", $separator, $string),
-            ),
-        );
+        $string = self::toStr($string);
+        $string = strtolower(trim((string) preg_replace("/[^A-Za-z0-9-]+/", $separator, $string)));
         return trim($string, $separator);
     }
 
-    public static function length(string $string): int
+    public static function length(mixed $string): int
     {
-        return mb_strlen($string);
+        return mb_strlen(self::toStr($string));
     }
 
-    public static function isEmpty(string $string): bool
+    public static function isEmpty(mixed $string): bool
     {
-        return trim($string) === "";
+        return trim(self::toStr($string)) === '';
     }
 
-    public static function isNotEmpty(string $string): bool
+    public static function isNotEmpty(mixed $string): bool
     {
         return !self::isEmpty($string);
     }
 
-    public static function padLeft(
-        string $string,
-        int    $length,
-        string $pad = " ",
-    ): string
+    public static function padLeft(mixed $string, int $length, string $pad = ' '): string
     {
-        return str_pad($string, $length, $pad, STR_PAD_LEFT);
+        return str_pad(self::toStr($string), $length, $pad, STR_PAD_LEFT);
     }
 
-    public static function padRight(
-        string $string,
-        int    $length,
-        string $pad = " ",
-    ): string
+    public static function padRight(mixed $string, int $length, string $pad = ' '): string
     {
-        return str_pad($string, $length, $pad);
+        return str_pad(self::toStr($string), $length, $pad);
     }
 
-    public static function padBoth(
-        string $string,
-        int    $length,
-        string $pad = " ",
-    ): string
+    public static function padBoth(mixed $string, int $length, string $pad = ' '): string
     {
-        return str_pad($string, $length, $pad, STR_PAD_BOTH);
+        return str_pad(self::toStr($string), $length, $pad, STR_PAD_BOTH);
     }
 
-    /**
-     * Executes a regular expression match on a given string.
-     *
-     * If the pattern matches the subject, the function returns an array with the matches.
-     * If the pattern does not match the subject, the function returns null.
-     *
-     * @param string $pattern The regular expression pattern to match.
-     * @param string $subject The string to search for the pattern in.
-     *
-     * @return array|null The matches if the pattern matches, null otherwise.
-     */
-    public static function match(string $pattern, string $subject): ?array
+    public static function match(mixed $pattern, mixed $subject): ?array
     {
-        return preg_match($pattern, $subject, $matches) ? $matches : null;
+        $subject = self::toStr($subject);
+        return preg_match(self::toStr($pattern), $subject, $matches) ? $matches : null;
     }
 
-    /**
-     * Executes a global regular expression match on a given string.
-     *
-     * Returns all matches as an array of arrays, or null if no matches found.
-     *
-     * @param string $pattern The regular expression pattern to match.
-     * @param string $subject The string to search for the pattern in.
-     *
-     * @return array|null All matches if the pattern matches, null otherwise.
-     */
-    public static function matchAll(string $pattern, string $subject): ?array
+    public static function matchAll(mixed $pattern, mixed $subject): ?array
     {
-        return preg_match_all($pattern, $subject, $matches) ? $matches : null;
+        $subject = self::toStr($subject);
+        return preg_match_all(self::toStr($pattern), $subject, $matches) ? $matches : null;
     }
 
-    /**
-     * Generates a random string of the given length.
-     *
-     * The string will contain a mix of uppercase and lowercase letters, as well as numbers.
-     *
-     * @param int $length The length of the string to generate. Defaults to 16.
-     *
-     * @return string The generated random string.
-     */
     public static function random(int $length = 16): string
     {
         return substr(
-            str_shuffle(
-                str_repeat(
-                    "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
-                    (int)ceil($length / 62),
-                ),
-            ),
+            str_shuffle(str_repeat(
+                "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ",
+                (int) ceil($length / 62)
+            )),
             0,
-            $length,
+            $length
         );
     }
 
-    /**
-     * Extracts a substring between two given strings from a given string.
-     *
-     * If the start or end strings are not found, the function returns null.
-     *
-     * @param string $string The string to extract from.
-     * @param string $start The starting string.
-     * @param string $end The ending string.
-     *
-     * @return string|null The extracted substring or null if the start or end strings are not found.
-     */
-    public static function extractStringBetween(
-        string $string,
-        string $start,
-        string $end,
-    ): ?string
+    public static function extractStringBetween(mixed $string, mixed $start, mixed $end): ?string
     {
+        $string = self::toStr($string);
+        $start = self::toStr($start);
+        $end   = self::toStr($end);
+
         $startPos = strpos($string, $start);
         if ($startPos === false) {
             return null;
         }
+
         $endPos = strpos($string, $end, $startPos + strlen($start));
         if ($endPos === false) {
             return null;
         }
-        return mb_substr(
-            $string,
-            $startPos + strlen($start),
-            $endPos - $startPos - strlen($start),
-        );
+
+        return mb_substr($string, $startPos + strlen($start), $endPos - $startPos - strlen($start));
     }
 
-    /**
-     * Get a substring from the string.
-     *
-     * @param string $string The input string.
-     * @param int $start The starting position.
-     * @param int|null $length The length of the substring.
-     *
-     * @return string The extracted substring.
-     */
-    public static function substr(string $string, int $start, ?int $length = null): string
+    public static function substr(mixed $string, int $start, ?int $length = null): string
     {
-        return mb_substr($string, $start, $length);
+        return mb_substr(self::toStr($string), $start, $length);
     }
 
-    /**
-     * Get the portion of a string before a given value.
-     *
-     * @param string $string The input string.
-     * @param string $search The search value.
-     *
-     * @return string The portion before the search value, or the entire string if not found.
-     */
-    public static function before(string $string, string $search): string
+    public static function before(mixed $string, mixed $search): string
     {
+        $string = self::toStr($string);
+        $search = self::toStr($search);
+
         $pos = strpos($string, $search);
         return $pos === false ? $string : substr($string, 0, $pos);
     }
 
-    /**
-     * Get the portion of a string after a given value.
-     *
-     * @param string $string The input string.
-     * @param string $search The search value.
-     *
-     * @return string The portion after the search value, or an empty string if not found.
-     */
-    public static function after(string $string, string $search): string
+    public static function after(mixed $string, mixed $search): string
     {
+        $string = self::toStr($string);
+        $search = self::toStr($search);
+
         $pos = strpos($string, $search);
-        return $pos === false ? "" : substr($string, $pos + strlen($search));
+        return $pos === false ? '' : substr($string, $pos + strlen($search));
     }
 
-    /**
-     * Get the portion of a string before the last occurrence of a given value.
-     *
-     * @param string $string The input string.
-     * @param string $search The search value.
-     *
-     * @return string The portion before the last occurrence, or the entire string if not found.
-     */
-    public static function beforeLast(string $string, string $search): string
+    public static function beforeLast(mixed $string, mixed $search): string
     {
+        $string = self::toStr($string);
+        $search = self::toStr($search);
+
         $pos = strrpos($string, $search);
         return $pos === false ? $string : substr($string, 0, $pos);
     }
 
-    /**
-     * Get the portion of a string after the last occurrence of a given value.
-     *
-     * @param string $string The input string.
-     * @param string $search The search value.
-     *
-     * @return string The portion after the last occurrence, or an empty string if not found.
-     */
-    public static function afterLast(string $string, string $search): string
+    public static function afterLast(mixed $string, mixed $search): string
     {
+        $string = self::toStr($string);
+        $search = self::toStr($search);
+
         $pos = strrpos($string, $search);
-        return $pos === false ? "" : substr($string, $pos + strlen($search));
+        return $pos === false ? '' : substr($string, $pos + strlen($search));
     }
 
-    /**
-     * Repeat a string a given number of times.
-     *
-     * @param string $string The string to repeat.
-     * @param int $times The number of times to repeat.
-     *
-     * @return string The repeated string.
-     */
-    public static function repeat(string $string, int $times): string
+    public static function repeat(mixed $string, int $times): string
     {
-        return str_repeat($string, $times);
+        return str_repeat(self::toStr($string), $times);
     }
 
-    /**
-     * Remove whitespace from the beginning and end of a string.
-     *
-     * @param string $string The input string.
-     * @param string $characters Optional characters to trim.
-     *
-     * @return string The trimmed string.
-     */
-    public static function trim(string $string, string $characters = " \t\n\r\0\x0B"): string
+    public static function trim(mixed $string, string $characters = " \t\n\r\0\x0B"): string
     {
-        return trim($string, $characters);
+        return trim(self::toStr($string), $characters);
     }
 
-    /**
-     * Remove whitespace from the beginning of a string.
-     *
-     * @param string $string The input string.
-     * @param string $characters Optional characters to trim.
-     *
-     * @return string The trimmed string.
-     */
-    public static function ltrim(string $string, string $characters = " \t\n\r\0\x0B"): string
+    public static function ltrim(mixed $string, string $characters = " \t\n\r\0\x0B"): string
     {
-        return ltrim($string, $characters);
+        return ltrim(self::toStr($string), $characters);
     }
 
-    /**
-     * Remove whitespace from the end of a string.
-     *
-     * @param string $string The input string.
-     * @param string $characters Optional characters to trim.
-     *
-     * @return string The trimmed string.
-     */
-    public static function rtrim(string $string, string $characters = " \t\n\r\0\x0B"): string
+    public static function rtrim(mixed $string, string $characters = " \t\n\r\0\x0B"): string
     {
-        return rtrim($string, $characters);
+        return rtrim(self::toStr($string), $characters);
     }
 
-    /**
-     * Remove the given substring from the start of the string.
-     *
-     * @param string $string The input string.
-     * @param string $prefix The prefix to remove.
-     *
-     * @return string The string without the prefix.
-     */
-    public static function removePrefix(string $string, string $prefix): string
+    public static function removePrefix(mixed $string, mixed $prefix): string
     {
+        $string = self::toStr($string);
+        $prefix = self::toStr($prefix);
+
         return self::startsWith($string, $prefix)
             ? substr($string, strlen($prefix))
             : $string;
     }
 
-    /**
-     * Remove the given substring from the end of the string.
-     *
-     * @param string $string The input string.
-     * @param string $suffix The suffix to remove.
-     *
-     * @return string The string without the suffix.
-     */
-    public static function removeSuffix(string $string, string $suffix): string
+    public static function removeSuffix(mixed $string, mixed $suffix): string
     {
+        $string = self::toStr($string);
+        $suffix = self::toStr($suffix);
+
         return self::endsWith($string, $suffix)
             ? substr($string, 0, -strlen($suffix))
             : $string;
     }
 
-    /**
-     * Ensure a string starts with a given prefix.
-     *
-     * @param string $string The input string.
-     * @param string $prefix The prefix to ensure.
-     *
-     * @return string The string with the prefix.
-     */
-    public static function ensurePrefix(string $string, string $prefix): string
+    public static function ensurePrefix(mixed $string, mixed $prefix): string
     {
-        return self::startsWith($string, $prefix) ? $string : $prefix . $string;
+        $string = self::toStr($string);
+        $prefix = self::toStr($prefix);
+
+        return self::startsWith($string, $prefix)
+            ? $string
+            : $prefix . $string;
     }
 
-    /**
-     * Ensure a string ends with a given suffix.
-     *
-     * @param string $string The input string.
-     * @param string $suffix The suffix to ensure.
-     *
-     * @return string The string with the suffix.
-     */
-    public static function ensureSuffix(string $string, string $suffix): string
+    public static function ensureSuffix(mixed $string, mixed $suffix): string
     {
-        return self::endsWith($string, $suffix) ? $string : $string . $suffix;
+        $string = self::toStr($string);
+        $suffix = self::toStr($suffix);
+
+        return self::endsWith($string, $suffix)
+            ? $string
+            : $string . $suffix;
     }
 
-    /**
-     * Convert a string to an array of characters.
-     *
-     * @param string $string The input string.
-     *
-     * @return array<string> The array of characters.
-     */
-    public static function toArray(string $string): array
+    public static function toArray(mixed $string): array
     {
-        return preg_split("//u", $string, -1, PREG_SPLIT_NO_EMPTY);
+        return preg_split("//u", self::toStr($string), -1, PREG_SPLIT_NO_EMPTY)
+            ?: [];
     }
 
-    /**
-     * Check if a string is valid JSON.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if valid JSON, false otherwise.
-     */
-    public static function isJson(string $string): bool
+    public static function isJson(mixed $string): bool
     {
-        json_decode($string);
-        return json_last_error() === JSON_ERROR_NONE;
+        if (!is_string($string) && !is_scalar($string) && !$string instanceof Stringable) {
+            return false;
+        }
+
+        $string = (string) $string;
+
+        return json_validate($string);
     }
 
-    /**
-     * Check if a string is a valid URL.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if valid URL, false otherwise.
-     */
-    public static function isUrl(string $string): bool
+    public static function isUrl(mixed $string): bool
     {
-        return filter_var($string, FILTER_VALIDATE_URL) !== false;
+        return filter_var(self::toStr($string), FILTER_VALIDATE_URL) !== false;
     }
 
-    /**
-     * Check if a string is a valid email address.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if valid email, false otherwise.
-     */
-    public static function isEmail(string $string): bool
+    public static function isEmail(mixed $string): bool
     {
-        return filter_var($string, FILTER_VALIDATE_EMAIL) !== false;
+        return filter_var(self::toStr($string), FILTER_VALIDATE_EMAIL) !== false;
     }
 
-    /**
-     * Check if a string contains only alphanumeric characters.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if alphanumeric, false otherwise.
-     */
-    public static function isAlphanumeric(string $string): bool
+    public static function isAlphanumeric(mixed $string): bool
     {
-        return ctype_alnum($string);
+        return ctype_alnum(self::toStr($string));
     }
 
-    /**
-     * Check if a string contains only alphabetic characters.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if alphabetic, false otherwise.
-     */
-    public static function isAlpha(string $string): bool
+    public static function isAlpha(mixed $string): bool
     {
-        return ctype_alpha($string);
+        return ctype_alpha(self::toStr($string));
     }
 
-    /**
-     * Check if a string contains only numeric characters.
-     *
-     * @param string $string The string to check.
-     *
-     * @return bool True if numeric, false otherwise.
-     */
-    public static function isNumeric(string $string): bool
+    public static function isNumeric(mixed $string): bool
     {
-        return is_numeric($string);
+        return is_numeric(self::toStr($string));
     }
 
-    /**
-     * Mask a portion of a string with a repeated character.
-     *
-     * @param string $string The input string.
-     * @param string $character The masking character.
-     * @param int $index The starting index (negative for from end).
-     * @param int|null $length The length to mask (null for remaining).
-     *
-     * @return string The masked string.
-     */
     public static function mask(
-        string $string,
-        string $character = "*",
-        int    $index = 0,
-        ?int   $length = null
-    ): string
-    {
+        mixed $string,
+        string $character = '*',
+        int $index = 0,
+        ?int $length = null
+    ): string {
+        $string = self::toStr($string);
+
         if ($index === 0 && $length === null) {
             return str_repeat($character, mb_strlen($string));
         }
@@ -638,48 +448,17 @@ final class Str
         return $start . str_repeat($character, $segmentLen) . $end;
     }
 
-    /**
-     * Swap keywords in a string with values from an array.
-     *
-     * @param string $string The template string with placeholders.
-     * @param array $replacements Associative array of replacements.
-     *
-     * @return array|string The string with replacements applied.
-     */
-    public static function swap(string $string, array $replacements): array|string
+    public static function swap(mixed $string, array $replacements): string
     {
-        return strtr($string, $replacements);
+        return strtr(self::toStr($string), $replacements);
     }
 
-    /**
-     * Split a string by a separator.
-     *
-     * @param string $seperator The delimiter to split by.
-     * @param string $string The input string.
-     * @param int $limit Max number of elements to return.
-     *
-     * @return array<string> The exploded parts.
-     */
-    public static function split(
-        string $seperator,
-        string $string,
-        int    $limit = PHP_INT_MAX
-    ): array
+    public static function split(string $separator, mixed $string, int $limit = PHP_INT_MAX): array
     {
-        return explode($seperator, $string, $limit);
+        return explode($separator, self::toStr($string), $limit);
     }
 
-    /**
-     * Ensure a value is a valid UTF-8 string.
-     * Returns null if the value isn't a string.
-     *
-     * @param mixed $value Any input value.
-     *
-     * @return string|null UTF-8 cleaned string or null.
-     */
-    public static function cleanUtf8(
-        mixed $value
-    ): ?string
+    public static function cleanUtf8(mixed $value): ?string
     {
         if (!is_string($value)) {
             return null;
@@ -687,16 +466,10 @@ final class Str
         return mb_convert_encoding($value, "UTF-8", "UTF-8");
     }
 
-    /**
-     * Convert a string to plural form (basic English rules).
-     *
-     * @param string $string The singular word.
-     * @param int $count The count to determine plurality.
-     *
-     * @return string The plural form if count != 1, otherwise singular.
-     */
-    public static function plural(string $string, int $count = 2): string
+    public static function plural(mixed $string, int $count = 2): string
     {
+        $string = self::toStr($string);
+
         if ($count === 1) {
             return $string;
         }
@@ -732,15 +505,10 @@ final class Str
         return $string;
     }
 
-    /**
-     * Convert a string to singular form (basic English rules).
-     *
-     * @param string $string The plural word.
-     *
-     * @return string The singular form.
-     */
-    public static function singular(string $string): string
+    public static function singular(mixed $string): string
     {
+        $string = self::toStr($string);
+
         $rules = [
             '/(quiz)zes$/i' => "$1",
             '/(matr)ices$/i' => "$1ix",

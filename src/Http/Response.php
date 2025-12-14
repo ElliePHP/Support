@@ -6,16 +6,47 @@ namespace ElliePHP\Components\Support\Http;
 
 use DateTimeInterface;
 use ElliePHP\Components\Support\Util\Json;
+use Exception;
+use InvalidArgumentException;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Message\ResponseInterface;
+use RuntimeException;
 
 final class Response
 {
+    // Content Type Constants
+    private const string CONTENT_TYPE_JSON = 'application/json';
+    private const string CONTENT_TYPE_HTML = 'text/html; charset=utf-8';
+    private const string CONTENT_TYPE_TEXT = 'text/plain; charset=utf-8';
+    private const string CONTENT_TYPE_XML = 'application/xml; charset=utf-8';
+    private const string CONTENT_TYPE_JAVASCRIPT = 'text/javascript';
+    private const string CONTENT_TYPE_OCTET_STREAM = 'application/octet-stream';
+
+    // HTTP Status Code Constants
+    private const int HTTP_OK = 200;
+    private const int HTTP_CREATED = 201;
+    private const int HTTP_ACCEPTED = 202;
+    private const int HTTP_NO_CONTENT = 204;
+    private const int HTTP_MOVED_PERMANENTLY = 301;
+    private const int  HTTP_FOUND = 302;
+    private const int HTTP_SEE_OTHER = 303;
+    private const int HTTP_BAD_REQUEST = 400;
+    private const int HTTP_UNAUTHORIZED = 401;
+    private const int HTTP_FORBIDDEN = 403;
+    private const int HTTP_NOT_FOUND = 404;
+    private const int HTTP_METHOD_NOT_ALLOWED = 405;
+    private const int HTTP_CONFLICT = 409;
+    private const int HTTP_UNPROCESSABLE_ENTITY = 422;
+    private const int HTTP_TOO_MANY_REQUESTS = 429;
+    private const int HTTP_INTERNAL_SERVER_ERROR = 500;
+    private const int HTTP_SERVICE_UNAVAILABLE = 503;
+
     private Psr17Factory $factory;
 
     public function __construct(
-        private readonly ResponseInterface $response
-    ) {
+        private readonly ?ResponseInterface $response = null
+    )
+    {
         $this->factory = new Psr17Factory();
     }
 
@@ -30,7 +61,7 @@ final class Response
      */
     public function make(
         mixed $content = '',
-        int $status = 200,
+        int   $status = self::HTTP_OK,
         array $headers = []
     ): ResponseInterface
     {
@@ -46,7 +77,7 @@ final class Response
         }
 
         if ($content !== null && $content !== '') {
-            $stream = $this->factory->createStream((string) $content);
+            $stream = $this->factory->createStream((string)$content);
             $response = $response->withBody($stream);
         }
 
@@ -58,23 +89,32 @@ final class Response
      *
      * @param mixed $data Data to encode.
      * @param int $status HTTP status code.
-     * @param array $headers Additional headers.
+     * @param array<string, string|string[]> $headers Additional headers.
      * @param int $flags JSON encoding flags.
      *
      * @return ResponseInterface
+     * @throws RuntimeException If JSON encoding fails.
      */
     public function json(
         mixed $data,
-        int $status = 200,
+        int   $status = self::HTTP_OK,
         array $headers = [],
-        int $flags = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
+        int   $flags = JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE
     ): ResponseInterface
     {
-        $json = json_encode($data, $flags);
+        try {
+            $json = Json::safeEncode($data, $flags);
+            if ($json === false) {
+                throw new RuntimeException('Failed to encode JSON');
+            }
+        } catch (Exception $e) {
+            throw new RuntimeException('Failed to encode JSON: ' . $e->getMessage(), 0, $e);
+        }
 
         $response = $this->factory->createResponse($status);
+        $response = $response->withHeader('Content-Type', self::CONTENT_TYPE_JSON);
 
-        foreach (array_merge(['Content-Type' => 'application/json'], $headers) as $name => $value) {
+        foreach ($headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
@@ -91,20 +131,27 @@ final class Response
      * @param array $headers Additional headers.
      *
      * @return ResponseInterface
+     * @throws RuntimeException If JSON encoding fails.
      */
     public function jsonp(
         string $callback,
-        mixed $data,
-        int $status = 200,
-        array $headers = []
+        mixed  $data,
+        int    $status = self::HTTP_OK,
+        array  $headers = []
     ): ResponseInterface
     {
-        $json = Json::encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+        // Sanitize callback name
+        if (!preg_match('/^[a-zA-Z_$][a-zA-Z0-9_$]*$/', $callback)) {
+            throw new InvalidArgumentException('Invalid JSONP callback name');
+        }
+
+        $json = Json::safeEncode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE);
+
         $content = sprintf('/**/ typeof %s === \'function\' && %s(%s);', $callback, $callback, $json);
 
         $response = $this->factory->createResponse($status);
 
-        foreach (array_merge(['Content-Type' => 'text/javascript'], $headers) as $name => $value) {
+        foreach (array_merge(['Content-Type' => self::CONTENT_TYPE_JAVASCRIPT], $headers) as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
@@ -123,13 +170,13 @@ final class Response
      */
     public function html(
         string $html,
-        int $status = 200,
-        array $headers = []
+        int    $status = self::HTTP_OK,
+        array  $headers = []
     ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
-        foreach (array_merge(['Content-Type' => 'text/html; charset=utf-8'], $headers) as $name => $value) {
+        foreach (array_merge(['Content-Type' => self::CONTENT_TYPE_HTML], $headers) as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
@@ -148,13 +195,13 @@ final class Response
      */
     public function text(
         string $text,
-        int $status = 200,
-        array $headers = []
+        int    $status = self::HTTP_OK,
+        array  $headers = []
     ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
-        foreach (array_merge(['Content-Type' => 'text/plain; charset=utf-8'], $headers) as $name => $value) {
+        foreach (array_merge(['Content-Type' => self::CONTENT_TYPE_TEXT], $headers) as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
@@ -173,20 +220,18 @@ final class Response
      */
     public function xml(
         string $xml,
-        int $status = 200,
-        array $headers = []
+        int    $status = self::HTTP_OK,
+        array  $headers = []
     ): ResponseInterface
     {
         $response = $this->factory->createResponse($status);
 
-        foreach (array_merge(['Content-Type' => 'application/xml; charset=utf-8'], $headers) as $name => $value) {
+        foreach (array_merge(['Content-Type' => self::CONTENT_TYPE_XML], $headers) as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
         $stream = $this->factory->createStream($xml);
-        $response = $response->withBody($stream);
-
-        return $response;
+        return $response->withBody($stream);
     }
 
     /**
@@ -200,10 +245,12 @@ final class Response
      */
     public function redirect(
         string $url,
-        int $status = 302,
-        array $headers = []
+        int    $status = self::HTTP_FOUND,
+        array  $headers = []
     ): ResponseInterface
     {
+        $this->validateRedirectStatus($status);
+
         $response = $this->factory->createResponse($status);
 
         foreach (array_merge(['Location' => $url], $headers) as $name => $value) {
@@ -223,7 +270,7 @@ final class Response
      */
     public function redirectPermanent(string $url, array $headers = []): ResponseInterface
     {
-        return $this->redirect($url, 301, $headers);
+        return $this->redirect($url, self::HTTP_MOVED_PERMANENTLY, $headers);
     }
 
     /**
@@ -236,7 +283,7 @@ final class Response
      */
     public function redirectTemporary(string $url, array $headers = []): ResponseInterface
     {
-        return $this->redirect($url, 302, $headers);
+        return $this->redirect($url, self::HTTP_FOUND, $headers);
     }
 
     /**
@@ -249,7 +296,7 @@ final class Response
      */
     public function redirectSeeOther(string $url, array $headers = []): ResponseInterface
     {
-        return $this->redirect($url, 303, $headers);
+        return $this->redirect($url, self::HTTP_SEE_OTHER, $headers);
     }
 
     /**
@@ -257,12 +304,23 @@ final class Response
      *
      * @param string|null $fallback Fallback URL.
      * @param int $status Status code.
+     * @param array $allowedHosts Allowed hosts for redirect (empty = current host only).
      *
      * @return ResponseInterface
      */
-    public function back(?string $fallback = '/', int $status = 302): ResponseInterface
+    public function back(
+        ?string $fallback = '/',
+        int     $status = self::HTTP_FOUND,
+        array   $allowedHosts = []
+    ): ResponseInterface
     {
         $referer = $_SERVER['HTTP_REFERER'] ?? $fallback;
+
+        // Validate referer URL
+        if ($referer !== $fallback && !$this->isValidRedirectUrl($referer, $allowedHosts)) {
+            $referer = $fallback;
+        }
+
         return $this->redirect($referer, $status);
     }
 
@@ -273,7 +331,7 @@ final class Response
      *
      * @return ResponseInterface
      */
-    public function noContent(int $status = 204): ResponseInterface
+    public function noContent(int $status = self::HTTP_NO_CONTENT): ResponseInterface
     {
         return $this->factory->createResponse($status);
     }
@@ -285,7 +343,7 @@ final class Response
      *
      * @return ResponseInterface
      */
-    public function empty(int $status = 204): ResponseInterface
+    public function empty(int $status = self::HTTP_NO_CONTENT): ResponseInterface
     {
         return $this->noContent($status);
     }
@@ -302,15 +360,18 @@ final class Response
     public function download(
         string $content,
         string $filename,
-        array $headers = []
+        array  $headers = []
     ): ResponseInterface
     {
-        $response = $this->factory->createResponse(200);
+        $response = $this->factory->createResponse(self::HTTP_OK);
+
+        // Sanitize filename for Content-Disposition
+        $sanitizedFilename = $this->sanitizeFilename($filename);
 
         foreach (array_merge([
-            'Content-Type' => 'application/octet-stream',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-            'Content-Length' => strlen($content),
+            'Content-Type' => self::CONTENT_TYPE_OCTET_STREAM,
+            'Content-Disposition' => sprintf('attachment; filename="%s"', $sanitizedFilename),
+            'Content-Length' => (string)strlen($content),
         ], $headers) as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
@@ -327,18 +388,27 @@ final class Response
      * @param array $headers Additional headers.
      *
      * @return ResponseInterface
+     * @throws RuntimeException If file doesn't exist or can't be read.
      */
     public function file(
-        string $path,
+        string  $path,
         ?string $filename = null,
-        array $headers = []
+        array   $headers = []
     ): ResponseInterface
     {
         if (!file_exists($path)) {
-            return $this->notFound('File not found');
+            throw new RuntimeException("File not found: {$path}");
+        }
+
+        if (!is_readable($path)) {
+            throw new RuntimeException("File not readable: {$path}");
         }
 
         $content = file_get_contents($path);
+        if ($content === false) {
+            throw new RuntimeException("Failed to read file: {$path}");
+        }
+
         $filename = $filename ?? basename($path);
 
         return $this->download($content, $filename, $headers);
@@ -353,28 +423,47 @@ final class Response
      * @param bool $deleteAfter Delete file after download.
      *
      * @return ResponseInterface
+     * @throws RuntimeException If file doesn't exist or can't be read.
      */
     public function streamDownload(
-        string $path,
+        string  $path,
         ?string $filename = null,
-        array $headers = [],
-        bool $deleteAfter = false
+        array   $headers = [],
+        bool    $deleteAfter = false
     ): ResponseInterface
     {
         if (!file_exists($path)) {
-            return $this->notFound('File not found');
+            throw new RuntimeException("File not found: $path");
+        }
+
+        if (!is_readable($path)) {
+            throw new RuntimeException("File not readable: $path");
         }
 
         $filename = $filename ?? basename($path);
         $resource = fopen($path, 'rb');
 
-        $response = $this->factory->createResponse(200);
+        if ($resource === false) {
+            throw new RuntimeException("Failed to open file: {$path}");
+        }
 
-        foreach (array_merge([
-            'Content-Type' => mime_content_type($path) ?: 'application/octet-stream',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-            'Content-Length' => filesize($path),
-        ], $headers) as $name => $value) {
+        $fileSize = filesize($path);
+        if ($fileSize === false) {
+            throw new RuntimeException("Failed to get file size: {$path}");
+        }
+
+        $response = $this->factory->createResponse(self::HTTP_OK);
+
+        // Sanitize filename for Content-Disposition
+        $sanitizedFilename = $this->sanitizeFilename($filename);
+
+        $mimeType = mime_content_type($path) ?: self::CONTENT_TYPE_OCTET_STREAM;
+
+        $response = $response->withHeader('Content-Type', $mimeType);
+        $response = $response->withHeader('Content-Disposition', sprintf('attachment; filename="%s"', $sanitizedFilename));
+        $response = $response->withHeader('Content-Length', (string)$fileSize);
+
+        foreach ($headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
 
@@ -382,7 +471,7 @@ final class Response
         $response = $response->withBody($stream);
 
         if ($deleteAfter) {
-            register_shutdown_function(static function() use ($path) {
+            register_shutdown_function(static function () use ($path): void {
                 @unlink($path);
             });
         }
@@ -400,7 +489,7 @@ final class Response
      */
     public function ok(mixed $content = '', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 200, $headers);
+        return $this->make($content, self::HTTP_OK, $headers);
     }
 
     /**
@@ -413,7 +502,7 @@ final class Response
      */
     public function created(mixed $content = '', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 201, $headers);
+        return $this->make($content, self::HTTP_CREATED, $headers);
     }
 
     /**
@@ -426,7 +515,7 @@ final class Response
      */
     public function accepted(mixed $content = '', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 202, $headers);
+        return $this->make($content, self::HTTP_ACCEPTED, $headers);
     }
 
     /**
@@ -439,7 +528,7 @@ final class Response
      */
     public function badRequest(mixed $content = 'Bad Request', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 400, $headers);
+        return $this->make($content, self::HTTP_BAD_REQUEST, $headers);
     }
 
     /**
@@ -452,7 +541,7 @@ final class Response
      */
     public function unauthorized(mixed $content = 'Unauthorized', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 401, $headers);
+        return $this->make($content, self::HTTP_UNAUTHORIZED, $headers);
     }
 
     /**
@@ -465,7 +554,7 @@ final class Response
      */
     public function forbidden(mixed $content = 'Forbidden', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 403, $headers);
+        return $this->make($content, self::HTTP_FORBIDDEN, $headers);
     }
 
     /**
@@ -478,7 +567,7 @@ final class Response
      */
     public function notFound(mixed $content = 'Not Found', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 404, $headers);
+        return $this->make($content, self::HTTP_NOT_FOUND, $headers);
     }
 
     /**
@@ -500,7 +589,7 @@ final class Response
             $headers['Allow'] = implode(', ', $allowed);
         }
 
-        return $this->make($content, 405, $headers);
+        return $this->make($content, self::HTTP_METHOD_NOT_ALLOWED, $headers);
     }
 
     /**
@@ -513,7 +602,7 @@ final class Response
      */
     public function conflict(mixed $content = 'Conflict', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 409, $headers);
+        return $this->make($content, self::HTTP_CONFLICT, $headers);
     }
 
     /**
@@ -526,7 +615,7 @@ final class Response
      */
     public function unprocessable(mixed $content = 'Unprocessable Entity', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 422, $headers);
+        return $this->make($content, self::HTTP_UNPROCESSABLE_ENTITY, $headers);
     }
 
     /**
@@ -539,16 +628,16 @@ final class Response
      * @return ResponseInterface
      */
     public function tooManyRequests(
-        ?int $retryAfter = null,
+        ?int  $retryAfter = null,
         mixed $content = 'Too Many Requests',
         array $headers = []
     ): ResponseInterface
     {
         if ($retryAfter !== null) {
-            $headers['Retry-After'] = $retryAfter;
+            $headers['Retry-After'] = (string)$retryAfter;
         }
 
-        return $this->make($content, 429, $headers);
+        return $this->make($content, self::HTTP_TOO_MANY_REQUESTS, $headers);
     }
 
     /**
@@ -561,7 +650,7 @@ final class Response
      */
     public function serverError(mixed $content = 'Internal Server Error', array $headers = []): ResponseInterface
     {
-        return $this->make($content, 500, $headers);
+        return $this->make($content, self::HTTP_INTERNAL_SERVER_ERROR, $headers);
     }
 
     /**
@@ -574,25 +663,30 @@ final class Response
      * @return ResponseInterface
      */
     public function serviceUnavailable(
-        ?int $retryAfter = null,
+        ?int  $retryAfter = null,
         mixed $content = 'Service Unavailable',
         array $headers = []
     ): ResponseInterface
     {
         if ($retryAfter !== null) {
-            $headers['Retry-After'] = $retryAfter;
+            $headers['Retry-After'] = (string)$retryAfter;
         }
 
-        return $this->make($content, 503, $headers);
+        return $this->make($content, self::HTTP_SERVICE_UNAVAILABLE, $headers);
     }
 
     /**
      * Get the underlying PSR-7 response.
      *
      * @return ResponseInterface
+     * @throws RuntimeException If no response is available.
      */
     public function psr(): ResponseInterface
     {
+        if ($this->response === null) {
+            throw new RuntimeException('No response available. Use creation methods first.');
+        }
+
         return $this->response;
     }
 
@@ -603,7 +697,7 @@ final class Response
      */
     public function raw(): ResponseInterface
     {
-        return $this->response;
+        return $this->psr();
     }
 
     /**
@@ -613,7 +707,7 @@ final class Response
      */
     public function status(): int
     {
-        return $this->response->getStatusCode();
+        return $this->psr()->getStatusCode();
     }
 
     /**
@@ -653,7 +747,7 @@ final class Response
      */
     public function isOk(): bool
     {
-        return $this->status() === 200;
+        return $this->status() === self::HTTP_OK;
     }
 
     /**
@@ -693,7 +787,7 @@ final class Response
      */
     public function isForbidden(): bool
     {
-        return $this->status() === 403;
+        return $this->status() === self::HTTP_FORBIDDEN;
     }
 
     /**
@@ -703,7 +797,7 @@ final class Response
      */
     public function isNotFound(): bool
     {
-        return $this->status() === 404;
+        return $this->status() === self::HTTP_NOT_FOUND;
     }
 
     /**
@@ -713,7 +807,7 @@ final class Response
      */
     public function body(): string
     {
-        return (string) $this->response->getBody();
+        return (string)$this->psr()->getBody();
     }
 
     /**
@@ -727,13 +821,30 @@ final class Response
     }
 
     /**
-     * Get response body as JSON.
+     * Get response body as decoded JSON array.
+     *
+     * @param bool $associative Return associative array instead of objects.
+     *
+     * @return mixed
+     * @throws RuntimeException If JSON decoding fails.
+     */
+    public function toArray(bool $associative = true): mixed
+    {
+        return Json::safeDecode($this->body(), $associative);
+    }
+
+    /**
+     * Get response body as JSON string (re-encodes for pretty printing).
+     *
+     * @param int $flags JSON encoding flags.
      *
      * @return string
+     * @throws RuntimeException If encoding fails.
      */
-    public function toJson(): string
+    public function toJson(int $flags = JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE): string
     {
-        return Json::encode($this->body());
+        return Json::safeEncode($this->toArray(), $flags | JSON_THROW_ON_ERROR);
+
     }
 
     /**
@@ -743,7 +854,7 @@ final class Response
      */
     public function headers(): array
     {
-        return $this->response->getHeaders();
+        return $this->psr()->getHeaders();
     }
 
     /**
@@ -756,7 +867,7 @@ final class Response
      */
     public function getHeader(string $name, ?string $default = null): ?string
     {
-        $values = $this->response->getHeader($name);
+        $values = $this->psr()->getHeader($name);
         return $values[0] ?? $default;
     }
 
@@ -769,7 +880,7 @@ final class Response
      */
     public function hasHeader(string $name): bool
     {
-        return $this->response->hasHeader($name);
+        return $this->psr()->hasHeader($name);
     }
 
     /**
@@ -782,7 +893,7 @@ final class Response
      */
     public function withHeader(string $name, string|array $value): ResponseInterface
     {
-        return $this->response->withHeader($name, $value);
+        return $this->psr()->withHeader($name, $value);
     }
 
     /**
@@ -807,7 +918,7 @@ final class Response
      */
     public function withHeaders(array $headers): ResponseInterface
     {
-        $response = $this->response;
+        $response = $this->psr();
         foreach ($headers as $name => $value) {
             $response = $response->withHeader($name, $value);
         }
@@ -824,7 +935,7 @@ final class Response
      */
     public function withStatus(int $status, string $reason = ''): ResponseInterface
     {
-        return $this->response->withStatus($status, $reason);
+        return $this->psr()->withStatus($status, $reason);
     }
 
     /**
@@ -850,7 +961,7 @@ final class Response
     public function withBody(string $body): ResponseInterface
     {
         $stream = $this->factory->createStream($body);
-        return $this->response->withBody($stream);
+        return $this->psr()->withBody($stream);
     }
 
     /**
@@ -870,7 +981,7 @@ final class Response
      *
      * @param string $name Cookie name.
      * @param string $value Cookie value.
-     * @param int $expires Expiration time.
+     * @param int $expires Expiration Unix timestamp.
      * @param string $path Cookie path.
      * @param string $domain Cookie domain.
      * @param bool $secure Secure flag.
@@ -882,11 +993,11 @@ final class Response
     public function withCookie(
         string $name,
         string $value,
-        int $expires = 0,
+        int    $expires = 0,
         string $path = '/',
         string $domain = '',
-        bool $secure = false,
-        bool $httpOnly = true,
+        bool   $secure = false,
+        bool   $httpOnly = true,
         string $sameSite = 'Lax'
     ): ResponseInterface
     {
@@ -913,15 +1024,15 @@ final class Response
             $cookie .= '; HttpOnly';
         }
 
-        if ($sameSite) {
+        if (in_array($sameSite, ['Strict', 'Lax', 'None'], true)) {
             $cookie .= '; SameSite=' . $sameSite;
         }
 
-        return $this->response->withAddedHeader('Set-Cookie', $cookie);
+        return $this->psr()->withAddedHeader('Set-Cookie', $cookie);
     }
 
     /**
-     * Alias for withCookie().
+     * Set cookie with expiration in minutes (convenience method).
      *
      * @param string $name
      * @param string $value
@@ -937,11 +1048,11 @@ final class Response
     public function cookie(
         string $name,
         string $value,
-        int $minutes = 0,
+        int    $minutes = 0,
         string $path = '/',
         string $domain = '',
-        bool $secure = false,
-        bool $httpOnly = true,
+        bool   $secure = false,
+        bool   $httpOnly = true,
         string $sameSite = 'Lax'
     ): ResponseInterface
     {
@@ -950,7 +1061,7 @@ final class Response
     }
 
     /**
-     * Set cookie that expires when browser closes.
+     * Delete a cookie.
      *
      * @param string $name
      * @param string $path
@@ -965,8 +1076,8 @@ final class Response
         string $name,
         string $path = '/',
         string $domain = '',
-        bool $secure = false,
-        bool $httpOnly = true,
+        bool   $secure = false,
+        bool   $httpOnly = true,
         string $sameSite = 'Lax'
     ): ResponseInterface
     {
@@ -1046,23 +1157,9 @@ final class Response
      */
     public function send(): void
     {
-        // Send status line
-        header(sprintf(
-            'HTTP/%s %s %s',
-            $this->response->getProtocolVersion(),
-            $this->response->getStatusCode(),
-            $this->response->getReasonPhrase()
-        ), true, $this->response->getStatusCode());
-
-        // Send headers
-        foreach ($this->response->getHeaders() as $name => $values) {
-            foreach ($values as $value) {
-                header(sprintf('%s: %s', $name, $value), false);
-            }
-        }
-
-        // Send body
-        echo $this->response->getBody();
+        $this->emitStatusLine();
+        $this->emitHeaders();
+        $this->emitBody();
     }
 
     /**
@@ -1074,5 +1171,118 @@ final class Response
     {
         $this->send();
         exit;
+    }
+
+    // ========================================================================
+    // PRIVATE HELPER METHODS
+    // ========================================================================
+
+    /**
+     * Validate redirect status code.
+     *
+     * @param int $status
+     *
+     * @return void
+     * @throws InvalidArgumentException If status is not a valid redirect code.
+     */
+    private function validateRedirectStatus(int $status): void
+    {
+        $validRedirectCodes = [301, 302, 303, 307, 308];
+
+        if (!in_array($status, $validRedirectCodes, true)) {
+            throw new InvalidArgumentException(
+                "Invalid redirect status code: {$status}. Must be one of: " . implode(', ', $validRedirectCodes)
+            );
+        }
+    }
+
+    /**
+     * Validate if URL is safe for redirect.
+     *
+     * @param string $url
+     * @param array $allowedHosts
+     *
+     * @return bool
+     */
+    private function isValidRedirectUrl(string $url, array $allowedHosts): bool
+    {
+        // Parse URL
+        $parsedUrl = parse_url($url);
+        if ($parsedUrl === false || !isset($parsedUrl['host'])) {
+            // Relative URL or malformed - allow it
+            return true;
+        }
+
+        $urlHost = $parsedUrl['host'];
+        $currentHost = $_SERVER['HTTP_HOST'] ?? '';
+
+        // If no allowed hosts specified, only allow current host
+        if (empty($allowedHosts)) {
+            return $urlHost === $currentHost;
+        }
+
+        // Check if host is in allowed list
+        return in_array($urlHost, $allowedHosts, true);
+    }
+
+    /**
+     * Sanitize filename for Content-Disposition header.
+     *
+     * @param string $filename
+     *
+     * @return string
+     */
+    private function sanitizeFilename(string $filename): string
+    {
+        // Remove any path components
+        $filename = basename($filename);
+
+        // Remove any characters that could be problematic in headers
+        $filename = preg_replace('/[^\w\-.]/', '_', $filename);
+
+        return $filename;
+    }
+
+    /**
+     * Emit status line.
+     *
+     * @return void
+     */
+    private function emitStatusLine(): void
+    {
+        $response = $this->psr();
+
+        $statusLine = sprintf(
+            'HTTP/%s %s %s',
+            $response->getProtocolVersion(),
+            $response->getStatusCode(),
+            $response->getReasonPhrase()
+        );
+
+        header($statusLine, true, $response->getStatusCode());
+    }
+
+    /**
+     * Emit headers.
+     *
+     * @return void
+     */
+    private function emitHeaders(): void
+    {
+        foreach ($this->psr()->getHeaders() as $name => $values) {
+            foreach ($values as $value) {
+                header(sprintf('%s: %s', $name, $value), false);
+            }
+        }
+    }
+
+    /**
+     * Emit body.
+     *
+     * @return void
+     */
+    private function emitBody(): void
+    {
+        echo $this->psr()->getBody();
     }
 }

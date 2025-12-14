@@ -4,24 +4,31 @@ declare(strict_types=1);
 
 namespace ElliePHP\Components\Support\Http;
 
+use BackedEnum;
 use DateTimeImmutable;
 use DateTimeInterface;
 use DateTimeZone;
 use ElliePHP\Components\Support\Util\Json;
 use ElliePHP\Components\Support\Util\Str;
 use Exception;
+use InvalidArgumentException;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Message\UploadedFileInterface;
 
 final class Request
 {
     private static ?ServerRequestCreator $creator = null;
 
+    /**
+     * Trusted proxy IP addresses.
+     */
+    private array $trustedProxies = [];
+
     public function __construct(
         private readonly ServerRequestInterface $request
-    )
-    {
+    ) {
     }
 
     /**
@@ -49,7 +56,7 @@ final class Request
      *
      * @param string $method HTTP method.
      * @param string $uri URI.
-     * @param array $headers Headers.
+     * @param array<string, string|string[]> $headers Headers.
      * @param string|resource|null $body Body.
      * @param string $version Protocol version.
      *
@@ -61,8 +68,7 @@ final class Request
         array  $headers = [],
         mixed  $body = null,
         string $version = '1.1'
-    ): self
-    {
+    ): self {
         $factory = new Psr17Factory();
         $request = $factory->createRequest($method, $uri);
 
@@ -78,6 +84,29 @@ final class Request
         }
 
         return new self($request->withProtocolVersion($version));
+    }
+
+    /**
+     * Set trusted proxy IP addresses.
+     *
+     * @param array<string> $proxies
+     *
+     * @return self
+     */
+    public function setTrustedProxies(array $proxies): self
+    {
+        $this->trustedProxies = $proxies;
+        return $this;
+    }
+
+    /**
+     * Get trusted proxies.
+     *
+     * @return array<string>
+     */
+    public function getTrustedProxies(): array
+    {
+        return $this->trustedProxies;
     }
 
     /**
@@ -117,7 +146,7 @@ final class Request
      */
     public function uri(): string
     {
-        return (string)$this->request->getUri();
+        return (string) $this->request->getUri();
     }
 
     /**
@@ -148,8 +177,14 @@ final class Request
     public function fullUrl(): string
     {
         $uri = $this->request->getUri();
-        return (string)$uri;
+        $url = $this->urlWithoutQuery();
+        $query = $uri->getQuery();
 
+        if ($query !== '') {
+            $url .= '?' . $query;
+        }
+
+        return $url;
     }
 
     /**
@@ -182,6 +217,45 @@ final class Request
         }
 
         return $url . $path;
+    }
+
+    /**
+     * Get URL segment by index (1-based).
+     *
+     * @param int $index Segment index (1-based).
+     * @param string|null $default Default value.
+     *
+     * @return string|null
+     */
+    public function segment(int $index, ?string $default = null): ?string
+    {
+        $segments = array_values(array_filter(explode('/', $this->path())));
+        return $segments[$index - 1] ?? $default;
+    }
+
+    /**
+     * Get all URL segments.
+     *
+     * @return array<string>
+     */
+    public function segments(): array
+    {
+        return array_values(array_filter(explode('/', $this->path())));
+    }
+
+    /**
+     * Check if current URL matches given pattern(s).
+     *
+     * @param string ...$patterns
+     *
+     * @return bool
+     */
+    public function is(string ...$patterns): bool
+    {
+        $path = $this->path();
+
+        return array_any($patterns, static fn($pattern) => fnmatch($pattern, $path));
+
     }
 
     /**
@@ -232,7 +306,8 @@ final class Request
      */
     public function allPost(): array
     {
-        return $this->request->getParsedBody() ?? [];
+        $body = $this->request->getParsedBody();
+        return is_array($body) ? $body : [];
     }
 
     /**
@@ -269,7 +344,7 @@ final class Request
     /**
      * Get only specified keys from input.
      *
-     * @param array $keys
+     * @param array<string> $keys
      *
      * @return array
      */
@@ -282,7 +357,7 @@ final class Request
     /**
      * Get all input except specified keys.
      *
-     * @param array $keys
+     * @param array<string> $keys
      *
      * @return array
      */
@@ -295,7 +370,7 @@ final class Request
     /**
      * Check if input has a key.
      *
-     * @param string|array $key
+     * @param string|array<string> $key
      *
      * @return bool
      */
@@ -311,7 +386,7 @@ final class Request
     /**
      * Check if input has any of the given keys.
      *
-     * @param string|array $keys
+     * @param string|array<string> $keys
      *
      * @return bool
      */
@@ -326,8 +401,9 @@ final class Request
 
     /**
      * Check if input key exists and is not empty.
+     * Note: "0", 0, and false are considered filled.
      *
-     * @param string|array $key
+     * @param string|array<string> $key
      *
      * @return bool
      */
@@ -336,8 +412,14 @@ final class Request
         $keys = is_array($key) ? $key : func_get_args();
 
         foreach ($keys as $k) {
+            if (!$this->has($k)) {
+                return false;
+            }
+
             $value = $this->input($k);
-            if (empty($value)) {
+
+            // Only null and empty string are considered not filled
+            if ($value === null || $value === '') {
                 return false;
             }
         }
@@ -346,9 +428,24 @@ final class Request
     }
 
     /**
+     * Check if any of the given keys are filled.
+     *
+     * @param string|array<string> $keys
+     *
+     * @return bool
+     */
+    public function anyFilled(string|array $keys): bool
+    {
+        $keys = is_array($keys) ? $keys : func_get_args();
+
+        return array_any($keys, fn($key) => $this->filled($key));
+
+    }
+
+    /**
      * Check if input is missing a key.
      *
-     * @param string|array $key
+     * @param string|array<string> $key
      *
      * @return bool
      */
@@ -375,6 +472,23 @@ final class Request
     }
 
     /**
+     * Get input when has key, otherwise return default.
+     *
+     * @param string $key
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    public function whenHas(string $key, mixed $default = null): mixed
+    {
+        if ($this->has($key)) {
+            return $this->input($key);
+        }
+
+        return $default;
+    }
+
+    /**
      * Get parsed body.
      *
      * @return array|object|null
@@ -382,6 +496,16 @@ final class Request
     public function body(): array|null|object
     {
         return $this->request->getParsedBody();
+    }
+
+    /**
+     * Get raw body as string.
+     *
+     * @return string
+     */
+    public function rawBody(): string
+    {
+        return (string) $this->request->getBody();
     }
 
     /**
@@ -394,8 +518,14 @@ final class Request
      */
     public function bool(string $key, bool $default = false): bool
     {
-        $value = $this->input($key, $default);
-        return filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+        $value = $this->input($key);
+
+        if ($value === null) {
+            return $default;
+        }
+
+        $result = filter_var($value, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+        return $result ?? $default;
     }
 
     /**
@@ -427,7 +557,8 @@ final class Request
             return $default;
         }
 
-        return filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE) ?? $default;
+        $result = filter_var($value, FILTER_VALIDATE_INT, FILTER_NULL_ON_FAILURE);
+        return $result ?? $default;
     }
 
     /**
@@ -459,7 +590,8 @@ final class Request
             return $default;
         }
 
-        return filter_var($value, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE) ?? $default;
+        $result = filter_var($value, FILTER_VALIDATE_FLOAT, FILTER_NULL_ON_FAILURE);
+        return $result !== false && $result !== null ? $result : $default;
     }
 
     /**
@@ -473,7 +605,7 @@ final class Request
     public function string(string $key, string $default = ''): string
     {
         $value = $this->input($key);
-        return $value !== null ? (string)$value : $default;
+        return $value !== null ? (string) $value : $default;
     }
 
     /**
@@ -491,6 +623,31 @@ final class Request
     }
 
     /**
+     * Get input as enum.
+     *
+     * @template T of BackedEnum
+     * @param string $key
+     * @param class-string<T> $enumClass
+     * @param T|null $default
+     *
+     * @return T|null
+     */
+    public function enum(string $key, string $enumClass, ?BackedEnum $default = null): ?BackedEnum
+    {
+        $value = $this->input($key);
+
+        if ($value === null) {
+            return $default;
+        }
+
+        if (!enum_exists($enumClass)) {
+            throw new InvalidArgumentException("Class {$enumClass} is not an enum");
+        }
+
+        return $enumClass::tryFrom($value) ?? $default;
+    }
+
+    /**
      * Get input as date.
      *
      * @param string $key
@@ -503,7 +660,7 @@ final class Request
     {
         $value = $this->input($key);
 
-        if ($value === null) {
+        if ($value === null || $value === '') {
             return null;
         }
 
@@ -528,8 +685,13 @@ final class Request
      */
     public function json(bool $assoc = true): mixed
     {
-        $body = (string)$this->request->getBody();
-        return Json::decode($body, $assoc);
+        $body = $this->rawBody();
+
+        if ($body === '') {
+            return $assoc ? [] : null;
+        }
+
+        return Json::safeDecode($body, $assoc);
     }
 
     /**
@@ -581,8 +743,37 @@ final class Request
     {
         $header = $this->header('Authorization');
 
-        if ($header && str_starts_with($header, 'Bearer ')) {
+        if ($header && is_string($header) && str_starts_with($header, 'Bearer ')) {
             return substr($header, 7);
+        }
+
+        return null;
+    }
+
+    /**
+     * Get basic auth credentials.
+     *
+     * @return array{username: string, password: string}|null
+     */
+    public function basicAuth(): ?array
+    {
+        $header = $this->header('Authorization');
+
+        if ($header && is_string($header) && str_starts_with($header, 'Basic ')) {
+            $decoded = base64_decode(substr($header, 6), true);
+
+            if ($decoded === false) {
+                return null;
+            }
+
+            $parts = explode(':', $decoded, 2);
+
+            if (count($parts) === 2) {
+                return [
+                    'username' => $parts[0],
+                    'password' => $parts[1]
+                ];
+            }
         }
 
         return null;
@@ -596,7 +787,7 @@ final class Request
     public function isJson(): bool
     {
         $contentType = $this->header('Content-Type', '');
-        return Str::contains($contentType, 'application/json');
+        return is_string($contentType) && Str::contains($contentType, 'application/json');
     }
 
     /**
@@ -617,7 +808,41 @@ final class Request
     public function wantsJson(): bool
     {
         $acceptable = $this->header('Accept', '');
-        return Str::contains($acceptable, 'application/json');
+        return is_string($acceptable) && Str::contains($acceptable, 'application/json');
+    }
+
+    /**
+     * Check if request accepts given content type(s).
+     *
+     * @param string|array<string> $contentTypes
+     *
+     * @return bool
+     */
+    public function accepts(string|array $contentTypes): bool
+    {
+        $acceptable = $this->header('Accept', '');
+
+        if (!is_string($acceptable)) {
+            return false;
+        }
+
+        $contentTypes = is_array($contentTypes) ? $contentTypes : func_get_args();
+
+        return array_any($contentTypes, static fn($type) => Str::contains($acceptable, $type) || $acceptable === '*/*');
+
+    }
+
+    /**
+     * Get the most acceptable content type from the given types.
+     *
+     * @param array<string> $contentTypes
+     *
+     * @return string|null
+     */
+    public function prefers(array $contentTypes): ?string
+    {
+        return array_find($contentTypes, fn($type) => $this->accepts($type));
+
     }
 
     /**
@@ -703,6 +928,26 @@ final class Request
     }
 
     /**
+     * Check if request is HEAD.
+     *
+     * @return bool
+     */
+    public function isHead(): bool
+    {
+        return $this->isMethod('HEAD');
+    }
+
+    /**
+     * Check if request is OPTIONS.
+     *
+     * @return bool
+     */
+    public function isOptions(): bool
+    {
+        return $this->isMethod('OPTIONS');
+    }
+
+    /**
      * Check if request is secure (HTTPS).
      *
      * @return bool
@@ -730,6 +975,24 @@ final class Request
     public function host(): string
     {
         return $this->request->getUri()->getHost();
+    }
+
+    /**
+     * Get HTTP host (host:port).
+     *
+     * @return string
+     */
+    public function httpHost(): string
+    {
+        $host = $this->host();
+        $port = $this->port();
+
+        if ($port && (($this->scheme() === 'http' && $port !== 80) ||
+                ($this->scheme() === 'https' && $port !== 443))) {
+            return $host . ':' . $port;
+        }
+
+        return $host;
     }
 
     /**
@@ -767,11 +1030,12 @@ final class Request
      *
      * @param string $key
      *
-     * @return mixed
+     * @return UploadedFileInterface|null
      */
-    public function file(string $key): mixed
+    public function file(string $key): ?UploadedFileInterface
     {
-        return $this->request->getUploadedFiles()[$key] ?? null;
+        $file = $this->request->getUploadedFiles()[$key] ?? null;
+        return $file instanceof UploadedFileInterface ? $file : null;
     }
 
     /**
@@ -783,7 +1047,8 @@ final class Request
      */
     public function hasFile(string $key): bool
     {
-        return isset($this->request->getUploadedFiles()[$key]);
+        $file = $this->file($key);
+        return $file !== null && $file->getError() === UPLOAD_ERR_OK;
     }
 
     /**
@@ -814,6 +1079,18 @@ final class Request
     }
 
     /**
+     * Check if request has cookie.
+     *
+     * @param string $name
+     *
+     * @return bool
+     */
+    public function hasCookie(string $name): bool
+    {
+        return array_key_exists($name, $this->cookies());
+    }
+
+    /**
      * Get server parameters.
      *
      * @return array
@@ -824,31 +1101,69 @@ final class Request
     }
 
     /**
-     * Get client IP address.
+     * Get a server parameter.
+     *
+     * @param string $key
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    public function serverParam(string $key, mixed $default = null): mixed
+    {
+        return $this->request->getServerParams()[$key] ?? $default;
+    }
+
+    /**
+     * Get client IP address (secured against spoofing).
      *
      * @return string|null
      */
     public function ip(): ?string
     {
         $server = $this->request->getServerParams();
+        $remoteAddr = $server['REMOTE_ADDR'] ?? null;
 
-        return $server['HTTP_X_FORWARDED_FOR']
-            ?? $server['HTTP_CLIENT_IP']
-            ?? $server['REMOTE_ADDR']
-            ?? null;
+        // If no trusted proxies configured, only use REMOTE_ADDR
+        if (empty($this->trustedProxies)) {
+            return $remoteAddr;
+        }
+
+        // Only trust X-Forwarded-For if request is from trusted proxy
+        if ($remoteAddr && in_array($remoteAddr, $this->trustedProxies, true)) {
+            if (isset($server['HTTP_X_FORWARDED_FOR'])) {
+                $ips = array_map('trim', explode(',', $server['HTTP_X_FORWARDED_FOR']));
+
+                // Return the first IP that is not a trusted proxy
+                foreach ($ips as $ip) {
+                    if (!in_array($ip, $this->trustedProxies, true) && $this->isValidIp($ip)) {
+                        return $ip;
+                    }
+                }
+            }
+
+            // Check other headers
+            if (isset($server['HTTP_CLIENT_IP']) && $this->isValidIp($server['HTTP_CLIENT_IP'])) {
+                return $server['HTTP_CLIENT_IP'];
+            }
+        }
+
+        return $remoteAddr;
     }
 
     /**
-     * Get all client IPs.
+     * Get all client IPs from X-Forwarded-For header.
      *
-     * @return array
+     * @return array<string>
      */
     public function ips(): array
     {
         $server = $this->request->getServerParams();
 
-        if (isset($server['HTTP_X_FORWARDED_FOR'])) {
-            return array_map('trim', explode(',', $server['HTTP_X_FORWARDED_FOR']));
+        // Only parse X-Forwarded-For if from trusted proxy
+        if (isset($server['REMOTE_ADDR'], $server['HTTP_X_FORWARDED_FOR']) && !empty($this->trustedProxies) && in_array($server['REMOTE_ADDR'], $this->trustedProxies, true)) {
+
+            $ips = array_map('trim', explode(',', $server['HTTP_X_FORWARDED_FOR']));
+            return array_filter($ips, fn($ip) => $this->isValidIp($ip));
         }
 
         $ip = $this->ip();
@@ -862,7 +1177,8 @@ final class Request
      */
     public function userAgent(): ?string
     {
-        return $this->header('User-Agent');
+        $ua = $this->header('User-Agent');
+        return is_string($ua) ? $ua : null;
     }
 
     /**
@@ -872,7 +1188,8 @@ final class Request
      */
     public function referer(): ?string
     {
-        return $this->header('Referer');
+        $referer = $this->header('Referer');
+        return is_string($referer) ? $referer : null;
     }
 
     /**
@@ -896,7 +1213,7 @@ final class Request
     }
 
     /**
-     * Get a request attribute.
+     * Get a request attribute (route parameter).
      *
      * @param string $name
      * @param mixed $default
@@ -919,6 +1236,23 @@ final class Request
     public function get(string $name, mixed $default = null): mixed
     {
         return $this->attribute($name, $default);
+    }
+
+    /**
+     * Get route parameter (alias for attribute with better semantics).
+     *
+     * @param string|null $parameter
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    public function route(?string $parameter = null, mixed $default = null): mixed
+    {
+        if ($parameter === null) {
+            return $this->attributes();
+        }
+
+        return $this->attribute($parameter, $default);
     }
 
     /**
@@ -963,5 +1297,108 @@ final class Request
         }
 
         return $request;
+    }
+
+    /**
+     * Get the request fingerprint for rate limiting.
+     *
+     * @return string
+     */
+    public function fingerprint(): string
+    {
+        $components = [
+            $this->path(),
+            $this->ip(),
+        ];
+
+        if ($userId = $this->attribute('user_id')) {
+            $components[] = $userId;
+        }
+
+        return sha1(implode('|', array_filter($components)));
+    }
+
+    /**
+     * Get content type.
+     *
+     * @return string|null
+     */
+    public function contentType(): ?string
+    {
+        $contentType = $this->header('Content-Type');
+
+        if (!is_string($contentType)) {
+            return null;
+        }
+
+        // Remove charset and other parameters
+        $parts = explode(';', $contentType);
+        return trim($parts[0]);
+    }
+
+    /**
+     * Check if request is from a specific IP or CIDR range.
+     *
+     * @param string|array<string> $ips
+     *
+     * @return bool
+     */
+    public function isFrom(string|array $ips): bool
+    {
+        $clientIp = $this->ip();
+
+        if (!$clientIp) {
+            return false;
+        }
+
+        $ips = is_array($ips) ? $ips : [$ips];
+
+        return array_any($ips, fn($ip) => $this->ipMatches($clientIp, $ip));
+
+    }
+
+    /**
+     * Validate if string is a valid IP address.
+     *
+     * @param string $ip
+     *
+     * @return bool
+     */
+    private function isValidIp(string $ip): bool
+    {
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false;
+    }
+
+    /**
+     * Check if client IP matches given IP or CIDR range.
+     *
+     * @param string $clientIp
+     * @param string $range
+     *
+     * @return bool
+     */
+    private function ipMatches(string $clientIp, string $range): bool
+    {
+        // Direct match
+        if ($clientIp === $range) {
+            return true;
+        }
+
+        // Check CIDR range
+        if (str_contains($range, '/')) {
+            [$subnet, $bits] = explode('/', $range);
+
+            $clientIpLong = ip2long($clientIp);
+            $subnetLong = ip2long($subnet);
+
+            if ($clientIpLong === false || $subnetLong === false) {
+                return false;
+            }
+
+            $mask = -1 << (32 - (int) $bits);
+            return ($clientIpLong & $mask) === ($subnetLong & $mask);
+        }
+
+        return false;
     }
 }

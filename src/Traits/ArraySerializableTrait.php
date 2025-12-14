@@ -14,6 +14,7 @@ use InvalidArgumentException;
 use DateTime;
 use DateTimeImmutable;
 use DateTimeInterface;
+use Throwable;
 use Traversable;
 
 trait ArraySerializableTrait
@@ -159,14 +160,14 @@ trait ArraySerializableTrait
      *
      * @return mixed The cast value.
      */
-    private static function castUnionType($value, ReflectionUnionType $type, string $context)
+    private static function castUnionType(mixed $value, ReflectionUnionType $type, string $context): mixed
     {
         $errors = [];
 
         foreach ($type->getTypes() as $unionType) {
             try {
                 return self::castToNamedType($value, $unionType, $context);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 $errors[] = $unionType->getName() . ': ' . $e->getMessage();
                 continue;
             }
@@ -448,7 +449,7 @@ trait ArraySerializableTrait
 
                 // Try to instantiate with the array data
                 return $className::fromArray($value);
-            } catch (\Throwable $e) {
+            } catch (Throwable $e) {
                 throw new InvalidArgumentException(
                     sprintf(
                         "Cannot cast %s to %s: %s",
@@ -486,7 +487,7 @@ trait ArraySerializableTrait
         if (is_string($value) || is_int($value)) {
             try {
                 if (is_int($value)) {
-                    $value = "@{$value}"; // Unix timestamp
+                    $value = "@$value"; // Unix timestamp
                 }
 
                 if ($className === DateTimeImmutable::class) {
