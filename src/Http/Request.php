@@ -16,10 +16,17 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
+use Rakit\Validation\Validator;
+use ElliePHP\Components\Support\Http\Exception\ValidationException;
 
 final class Request
 {
     private static ?ServerRequestCreator $creator = null;
+
+    /**
+     * The validated data from the last validation attempt.
+     */
+    private array $validated = [];
 
     /**
      * Trusted proxy IP addresses.
@@ -1267,7 +1274,7 @@ final class Request
     }
 
     /**
-     * Get user agent.
+     * Get a user agent.
      *
      * @return string|null
      */
@@ -1496,5 +1503,67 @@ final class Request
         }
 
         return false;
+    }
+
+
+    /**
+     * Validate the request data.
+     *
+     * @param array $rules Rules (e.g., ['email' => 'required|email'])
+     * @param array $messages Custom error messages
+     * @return array The validated data
+     *
+     * @throws ValidationException
+     */
+    public function validate(array $rules, array $messages = []): array
+    {
+        $validator = new Validator();
+
+        // Combine inputs and files so you can validate both
+        // Note: For files, 'required' works fine.
+        // Complex file rules (size/mime) in Rakit might expect standard $_FILES arrays,
+        // whereas this Request uses PSR-7 objects.
+        $data = array_merge($this->all(), $this->files());
+
+        // Create the validation instance
+        $validation = $validator->make($data, $rules, $messages);
+
+        // Validate
+        $validation->validate();
+
+        if ($validation->fails()) {
+            throw new ValidationException($validation->errors());
+        }
+
+        // Store and return only the data that was validated (Laravel behavior)
+        $this->validated = $validation->getValidatedData();
+
+        return $this->validated;
+    }
+
+    /**
+     * Get the validated data from the last validation attempt.
+     *
+     * @return array
+     */
+    public function validated(): array
+    {
+        return $this->validated;
+    }
+
+    /**
+     * Check if the validation fails for the given rules (Boolean version).
+     * Useful if you don't want to catch an exception.
+     *
+     * @param array $rules
+     * @return bool
+     */
+    public function fails(array $rules): bool
+    {
+        $validator = new Validator();
+        $validation = $validator->make(array_merge($this->all(), $this->files()), $rules);
+        $validation->validate();
+
+        return $validation->fails();
     }
 }

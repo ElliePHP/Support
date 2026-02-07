@@ -184,28 +184,67 @@ if ($env->isLoaded()) {
 
 ### HTTP Request (`Request`)
 
-PSR-7 compliant request wrapper:
+PSR-7 compliant request wrapper with Laravel-style validation support:
 
 ```php
 use ElliePHP\Components\Support\Http\Request;
+use ElliePHP\Components\Support\Http\Exception\ValidationException;
 
 $request = Request::fromGlobals();
 
-// Input handling
+// 1. Validation
+try {
+    // Validate inputs (including files)
+    // Returns only the validated data if successful
+    $validated = $request->validate([
+        'username' => 'required|min:3|max:20',
+        'email'    => 'required|email',
+        'age'      => 'nullable|numeric|min:18',
+        'role'     => 'default:user|in:admin,user',
+        'avatar'   => 'uploaded_file:0,2M,png,jpeg' // Validates PSR-7 uploaded files
+    ], [
+        'username.required' => 'We need your name!',
+    ]);
+
+    // Validation passed
+    // db->save($validated);
+
+} catch (ValidationException $e) {
+    // Validation failed
+    $errors = $e->errors();       // ['field' => ['Error message']]
+    $first = $e->first('username'); // Get first error for field
+    
+    // Return JSON or Redirect
+    if ($request->wantsJson()) {
+        // return json($errors, 422);
+    }
+}
+
+// Manual validation check (boolean return)
+if ($request->fails(['email' => 'required|email'])) {
+    // Handle error...
+}
+
+// 2. Input Handling
 $name = $request->input('name', 'default');
 $email = $request->string('email');
 $age = $request->int('age', 0);
 $active = $request->bool('active');
+$files = $request->files();
 
-// Request info
+// 3. Request Info
 $request->method();              // GET, POST, etc.
 $request->path();                // /api/users
+$request->url();                 // Full URL
 $request->isJson();              // true/false
-$request->bearerToken();         // JWT token
+$request->bearerToken();         // JWT token extraction
+$request->ip();                  // Client IP (supports proxies & Cloudflare)
+$request->userAgent();           // User Agent string
 
-// Headers
+// 4. Headers & Cookies
 $request->header('Content-Type');
 $request->hasHeader('Authorization');
+$request->cookie('session_id');
 ```
 
 ### HTTP Response (`Response`)
