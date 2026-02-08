@@ -593,7 +593,7 @@ final class Response
     }
 
     /**
-     * Create a 409 Conflict response.
+     * Create a 409-Conflict response.
      *
      * @param mixed $content
      * @param array $headers
@@ -721,7 +721,7 @@ final class Response
     }
 
     /**
-     * Check if response is successful (2xx).
+     * Check if the response is successful (2xx).
      *
      * @return bool
      */
@@ -1238,9 +1238,7 @@ final class Response
         $filename = basename($filename);
 
         // Remove any characters that could be problematic in headers
-        $filename = preg_replace('/[^\w\-.]/', '_', $filename);
-
-        return $filename;
+        return preg_replace('/[^\w\-.]/', '_', $filename);
     }
 
     /**
