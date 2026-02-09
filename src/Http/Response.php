@@ -388,7 +388,7 @@ final class Response
      * @param array $headers Additional headers.
      *
      * @return ResponseInterface
-     * @throws RuntimeException If file doesn't exist or can't be read.
+     * @throws RuntimeException If a file doesn't exist or can't be read.
      */
     public function file(
         string  $path,
@@ -397,16 +397,16 @@ final class Response
     ): ResponseInterface
     {
         if (!file_exists($path)) {
-            throw new RuntimeException("File not found: {$path}");
+            throw new RuntimeException("File not found: $path");
         }
 
         if (!is_readable($path)) {
-            throw new RuntimeException("File not readable: {$path}");
+            throw new RuntimeException("File not readable: $path");
         }
 
         $content = file_get_contents($path);
         if ($content === false) {
-            throw new RuntimeException("Failed to read file: {$path}");
+            throw new RuntimeException("Failed to read file: $path");
         }
 
         $filename = $filename ?? basename($path);
@@ -444,12 +444,12 @@ final class Response
         $resource = fopen($path, 'rb');
 
         if ($resource === false) {
-            throw new RuntimeException("Failed to open file: {$path}");
+            throw new RuntimeException("Failed to open file: $path");
         }
 
         $fileSize = filesize($path);
         if ($fileSize === false) {
-            throw new RuntimeException("Failed to get file size: {$path}");
+            throw new RuntimeException("Failed to get file size: $path");
         }
 
         $response = $this->factory->createResponse(self::HTTP_OK);
@@ -985,7 +985,7 @@ final class Response
      * @param string $path Cookie path.
      * @param string $domain Cookie domain.
      * @param bool $secure Secure flag.
-     * @param bool $httpOnly HTTP only flag.
+     * @param bool $httpOnly HTTP-only flag.
      * @param string $sameSite SameSite attribute.
      *
      * @return ResponseInterface
@@ -1191,7 +1191,7 @@ final class Response
 
         if (!in_array($status, $validRedirectCodes, true)) {
             throw new InvalidArgumentException(
-                "Invalid redirect status code: {$status}. Must be one of: " . implode(', ', $validRedirectCodes)
+                "Invalid redirect status code: $status. Must be one of: " . implode(', ', $validRedirectCodes)
             );
         }
     }
@@ -1216,12 +1216,12 @@ final class Response
         $urlHost = $parsedUrl['host'];
         $currentHost = $_SERVER['HTTP_HOST'] ?? '';
 
-        // If no allowed hosts specified, only allow current host
+        // If no allowed hosts specified, only allow the current host
         if (empty($allowedHosts)) {
             return $urlHost === $currentHost;
         }
 
-        // Check if host is in allowed list
+        // Check if host is in an allowed list
         return in_array($urlHost, $allowedHosts, true);
     }
 
