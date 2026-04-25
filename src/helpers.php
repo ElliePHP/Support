@@ -27,7 +27,11 @@ if (!function_exists('view')) {
             return View::render($template, $data);
         } catch (\Throwable) {
             // Fallback for non-bootstrapped usage
-            return (new TwigRenderer($paths, $options, $globals))->render($template, $data);
+            return TwigRenderer::builder($paths)
+                ->options($options)
+                ->globals($globals)
+                ->build()
+                ->render($template, $data);
         }
     }
 }

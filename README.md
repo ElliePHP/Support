@@ -255,13 +255,12 @@ If your app has a bootstrap phase, configure the renderer once and render anywhe
 Bootstrap once:
 
 ```php
-use ElliePHP\Components\Support\View\TwigRenderer;
 use ElliePHP\Components\Support\View\View;
 
-View::setRenderer(new TwigRenderer(__DIR__ . '/views', [
-    'cache' => __DIR__ . '/storage/cache/twig',
-    'autoescape' => 'html',
-]));
+View::boot()
+    ->viewDirectory(__DIR__ . '/views')
+    ->cache(__DIR__ . '/storage/cache/twig')
+    ->autoescape('html');
 ```
 
 Then render anywhere:
@@ -275,10 +274,10 @@ Render with the `TwigRenderer`:
 ```php
 use ElliePHP\Components\Support\View\TwigRenderer;
 
-$views = new TwigRenderer(__DIR__ . '/views', [
-    'cache' => __DIR__ . '/storage/cache/twig',
-    'autoescape' => 'html',
-]);
+$views = TwigRenderer::builder(__DIR__ . '/views')
+    ->cache(__DIR__ . '/storage/cache/twig')
+    ->autoescape('html')
+    ->build();
 
 echo $views->render('home.twig', ['name' => 'Joey']);
 ```
@@ -312,6 +311,9 @@ $response->html('<h1>Hello</h1>');
 $response->text('Plain text content');
 $response->xml('<?xml version="1.0"?><root></root>');
 
+// Twig views (renders via View::boot() if configured)
+$response->view('home.twig', ['name' => 'Joey']);
+
 // Redirects
 $response->redirect('/dashboard');
 $response->redirectPermanent('/new-url');      // 301
@@ -334,6 +336,10 @@ $response->methodNotAllowed(['GET', 'POST']);  // 405
 $response->conflict('Resource exists');        // 409
 $response->unprocessable(['errors' => []]);    // 422
 $response->tooManyRequests(60, 'Rate limit');  // 429
+
+// Validation errors (422)
+$response->validation($validationException);
+$response->validation(['email' => ['Invalid email']], 'The given data was invalid.');
 
 // Status code helpers (5xx)
 $response->serverError('System error');        // 500
