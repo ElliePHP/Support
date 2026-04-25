@@ -247,6 +247,48 @@ $request->hasHeader('Authorization');
 $request->cookie('session_id');
 ```
 
+### Views (Twig)
+
+Twig is included and can be used either via a small renderer class or a convenience helper.
+If your app has a bootstrap phase, configure the renderer once and render anywhere.
+
+Bootstrap once:
+
+```php
+use ElliePHP\Components\Support\View\TwigRenderer;
+use ElliePHP\Components\Support\View\View;
+
+View::setRenderer(new TwigRenderer(__DIR__ . '/views', [
+    'cache' => __DIR__ . '/storage/cache/twig',
+    'autoescape' => 'html',
+]));
+```
+
+Then render anywhere:
+
+```php
+echo view('home.twig', ['name' => 'Joey']);
+```
+
+Render with the `TwigRenderer`:
+
+```php
+use ElliePHP\Components\Support\View\TwigRenderer;
+
+$views = new TwigRenderer(__DIR__ . '/views', [
+    'cache' => __DIR__ . '/storage/cache/twig',
+    'autoescape' => 'html',
+]);
+
+echo $views->render('home.twig', ['name' => 'Joey']);
+```
+
+Or use the `view()` helper (autoloaded by Composer):
+
+```php
+echo view('home.twig', ['name' => 'Joey'], __DIR__ . '/views');
+```
+
 ### HTTP Response (`Response`)
 
 PSR-7 compliant response builder with extensive helpers:

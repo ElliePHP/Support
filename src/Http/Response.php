@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace ElliePHP\Components\Support\Http;
 
 use DateTimeInterface;
+use ElliePHP\Components\Support\Http\Exception\ValidationException;
 use ElliePHP\Components\Support\Util\Json;
+use ElliePHP\Components\Support\View\TwigRenderer;
+use ElliePHP\Components\Support\View\View;
 use Exception;
 use InvalidArgumentException;
 use Nyholm\Psr7\Factory\Psr17Factory;
@@ -1282,5 +1285,60 @@ final class Response
     private function emitBody(): void
     {
         echo $this->psr()->getBody();
+    }
+
+
+    /**
+     * Create a new validation error response.
+     *
+     * @param ValidationException|array $errors
+     * @param string $message
+     * @param array $headers
+     *
+     * @return ResponseInterface
+     */
+    public function validation(ValidationException|array $errors, string $message = 'The given data was invalid.', array $headers = []): ResponseInterface
+    {
+        if ($errors instanceof ValidationException) {
+            $payload = [
+                'message' => $errors->getMessage(),
+                'errors' => $errors->errors(),
+            ];
+        } else {
+            $payload = [
+                'message' => $message,
+                'errors' => $errors,
+            ];
+        }
+
+        return $this->json($payload, self::HTTP_UNPROCESSABLE_ENTITY, $headers);
+    }
+
+
+    /**
+     * Create a new view response.
+     *
+     * @param string $view
+     * @param array $data
+     * @param int $status
+     * @param array $headers
+     *
+     * @return ResponseInterface
+     */
+    public function view(
+        string $view,
+        array $data = [],
+        int $status = self::HTTP_OK,
+        array $headers = []
+    ): ResponseInterface
+    {
+        try {
+            $content = View::render($view, $data);
+        } catch (\Throwable) {
+            $renderer = new TwigRenderer('views');
+            $content = $renderer->render($view, $data);
+        }
+
+        return $this->html($content, $status, $headers);
     }
 }
