@@ -200,6 +200,7 @@ try {
         'username' => 'required|min:3|max:20',
         'email'    => 'required|email',
         'age'      => 'nullable|numeric|min:18',
+        'nickname' => 'sometimes|nullable|string',
         'role'     => 'default:user|in:admin,user',
         'avatar'   => 'uploaded_file:0,2M,png,jpeg' // Validates PSR-7 uploaded files
     ], [
@@ -245,6 +246,21 @@ $request->userAgent();           // User Agent string
 $request->header('Content-Type');
 $request->hasHeader('Authorization');
 $request->cookie('session_id');
+```
+
+Validation reads query parameters, form bodies, JSON request bodies, and uploaded files. JSON values take precedence over
+query values with the same key. Validated output preserves input presence: absent optional fields are omitted, explicitly
+nullable fields remain `null`, and `default`/`defaults` fields retain their generated value.
+
+The `sometimes` directive skips validation when its field is absent. The `string` rule rejects arrays, objects, and other
+non-string values. Applications can add custom Rakit rules through `ValidatorFactory`:
+
+```php
+use ElliePHP\Components\Support\Validation\RequestValidator;
+use ElliePHP\Components\Support\Validation\ValidatorFactory;
+
+$factory = (new ValidatorFactory())->extend('slug', new SlugRule());
+$request = new Request($psrRequest, new RequestValidator($factory));
 ```
 
 ### Views (Twig)

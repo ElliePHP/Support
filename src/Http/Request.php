@@ -16,8 +16,9 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Nyholm\Psr7Server\ServerRequestCreator;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Message\UploadedFileInterface;
-use Rakit\Validation\Validator;
 use ElliePHP\Components\Support\Http\Exception\ValidationException;
+use ElliePHP\Components\Support\Validation\RequestValidator;
+use Rakit\Validation\ErrorBag;
 
 final class Request
 {
@@ -34,7 +35,8 @@ final class Request
     private array $trustedProxies = [];
 
     public function __construct(
-        private readonly ServerRequestInterface $request
+        private readonly ServerRequestInterface $request,
+        private readonly RequestValidator $requestValidator = new RequestValidator(),
     ) {
     }
 
@@ -1517,26 +1519,11 @@ final class Request
      */
     public function validate(array $rules, array $messages = []): array
     {
-        $validator = new Validator();
-
-        // Combine inputs and files so you can validate both
-        // Note: For files, 'required' works fine.
-        // Complex file rules (size/mime) in Rakit might expect standard $_FILES arrays,
-        // whereas this Request uses PSR-7 objects.
-        $data = array_merge($this->all(), $this->files());
-
-        // Create the validation instance
-        $validation = $validator->make($data, $rules, $messages);
-
-        // Validate
-        $validation->validate();
-
-        if ($validation->fails()) {
-            throw new ValidationException($validation->errors());
-        }
-
-        // Store and return only the data that was validated (Laravel behavior)
-        $this->validated = $validation->getValidatedData();
+        $this->validated = $this->requestValidator->validate(
+            $this->validationData(),
+            $rules,
+            $messages,
+        );
 
         return $this->validated;
     }
@@ -1560,10 +1547,28 @@ final class Request
      */
     public function fails(array $rules): bool
     {
-        $validator = new Validator();
-        $validation = $validator->make(array_merge($this->all(), $this->files()), $rules);
-        $validation->validate();
+        try {
+            $this->validate($rules);
+            return false;
+        } catch (ValidationException) {
+            return true;
+        }
+    }
 
-        return $validation->fails();
+    private function validationData(): array
+    {
+        $data = $this->all();
+
+        if ($this->isJson()) {
+            $json = $this->json();
+            if (!is_array($json)) {
+                throw new ValidationException(new ErrorBag([
+                    'body' => ['json' => 'The request body must contain valid JSON object data.'],
+                ]));
+            }
+            $data = array_replace($data, $json);
+        }
+
+        return array_merge($data, $this->files());
     }
 }
